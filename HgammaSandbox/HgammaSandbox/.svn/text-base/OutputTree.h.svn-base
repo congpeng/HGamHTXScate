@@ -1,0 +1,44 @@
+#include <EventLoop/Worker.h>
+
+namespace HG {
+  // Small class for creation of an output tree
+  class OutputTree {
+  public:
+    OutputTree() : m_tree(0) {};
+    ~OutputTree(){};
+    
+    void createAndRegister(TString name, EL::Worker *wk) {
+      //      TFile *outputFile = wk->getOutputFile ("outputLabel");
+      m_tree = new TTree(name,name);
+      wk->addOutput(m_tree);
+      //m_tree->SetDirectory (outputFile);
+    }
+    
+    // access and fill the TTree
+    TTree *tree() { return m_tree; }
+    void fill() { m_tree->Fill(); }
+    
+    // maps for holding the integers and floats
+    std::map<TString,int> ints;
+    std::map<TString,float> floats;
+    std::map<TString,std::vector<float> > fvecs;
+    
+    // creation of float branches
+    void createFBranch(TString name) { m_tree->Branch(name,&floats[name],name+"/F"); };
+    void createFBranches(HG::StrV names) { for (TString n:names) createFBranch(n); }
+    // creation of int branches
+    void createIBranch(TString name) { m_tree->Branch(name,&ints[name],name+"/I"); };
+    void createIBranches(HG::StrV names) { for (TString n:names) createIBranch(n); }
+    // creation of float vector branches
+    void createFVecBranch(TString name) { m_tree->Branch(name,&fvecs[name]); }
+    void createFVecBranches(HG::StrV names) { for (TString n:names) createFVecBranch(n); }
+    // reset all branches - prior to filling a new entry
+    void resetBranches() {
+      for (auto &e:ints) e.second = -99;
+      for (auto &e:floats) e.second = -99.0;
+      for (auto &e:fvecs) e.second.clear();
+    }
+  private:
+    TTree *m_tree;
+  };
+}

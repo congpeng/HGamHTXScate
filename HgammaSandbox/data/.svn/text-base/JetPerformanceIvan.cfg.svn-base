@@ -1,0 +1,32 @@
+########"
+#
+# Configuration file for /afs/cern.ch/work/i/ivankp/analysis_2.3.20/HgammaSandbox/JetPerformanceIvan analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        JetPerformanceIvan_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HGamMC15.config
+
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+

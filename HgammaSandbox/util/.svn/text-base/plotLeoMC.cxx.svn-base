@@ -1,0 +1,112 @@
+#include "HgammaSandbox/PlotUtils.h"
+
+using namespace std;
+
+int getCol(int icol) {
+  static vector<int> cols({kRed,kBlue,kGreen+1,kOrange,kGray+1});
+  return cols[icol%5];
+}
+
+
+using namespace HG;
+int main(int argc, char **argv) {
+
+  // input file name
+  TString inDir("/afs/cern.ch/user/l/lcerdaal/work/public/"), pdf("MC_plots.pdf");
+
+  // Samples!
+  StrV samples({"ggF","VBF","WH","ZH","ttH"});
+
+  ////// XSEC
+  // Number of events
+  vector<double> Nevts({1e5,1e5,1e5,0.8e5,0.945e5});
+  // cross section in pb
+  vector<double> xsec({43.920,3.748,1.380,0.8696,0.5085});
+  double br=0.00228;
+  double lumi=10000; // 10 fb-1 = 10000 pb-1
+  // w = sigma * BR * lumi / Nevts
+  vector<double> weights(5,0);
+  for (int i=0;i<5;++i) weights[i] = xsec[i]*br*lumi/Nevts[i];
+  ////
+  
+  for (int i=1;i<argc;++i) {
+    TString arg(argv[i]);
+    if (arg=="--inputDir") inDir=argv[++i];
+    if (arg=="--inputsamples") samples=vectorize(argv[++i],",");
+    if (arg=="--pdfFile") pdf=argv[++i];
+  }
+  
+  printf("\n  Running plotLeoMC\n");
+  printf("  input dir: %s\n",inDir.Data());
+  vector<TFile*> files;
+  for (TString sample:samples)
+    files.push_back(openFile(inDir+"/"+sample+".root"));
+
+  // a vector of the names of the histograms to be plotted
+  StrV histNames =
+  vectorize(TString("Nreco_photons Rapidity_yy bjet_n25 cjet_n25")
+            +" elec_n25 jet_n25 ljet_n25 muon_n25 ph_n25 prapidity_jets_lead pt_jets_lead"
+            +" pt_truth_bjets pt_truth_bjets_lead pt_truth_cjets pt_truth_cjets_lead"
+            +" pt_truth_jets pt_truth_jets_lead pt_truth_ljets pt_truth_ljets_lead pt_yy"
+            +" Bhad_n Dhad_n");
+  
+  // Create output pdf
+  // Set style
+  TCanvas *can = new TCanvas();
+  can->SetTopMargin(0.02); can->SetRightMargin(0.02);
+  can->SetLeftMargin(0.12); can->SetBottomMargin(0.1);
+  can->Print(pdf+"[");
+  
+  int Nsamples = samples.size();
+  for (TString hn:histNames) {
+    vector<TH1*> hists;
+    for (int si=0;si<Nsamples;++si)
+      hists.push_back(getHisto(files[si],hn));
+
+    // find the maximal value and set the range of the first histogram
+    double max=0;
+    for (TH1 *h:hists) if (max<h->GetMaximum()) max=h->GetMaximum();
+    for (TH1 *h:hists) h->GetYaxis()->SetRangeUser(0,max*1.1);
+
+    // draw the histograms
+    drawHisto(hists.front(),"",getCol(0));
+    for (int si=0;si<Nsamples;++si) {
+      TH1 *h=hists[si];
+      
+      // Draw histo with lines, and with error bars
+      drawHisto(h,"same hist",getCol(si));
+      drawHisto(h,"same e",getCol(si));
+
+      // print the sample name and the mean
+      drawText(0.65,0.90-si*0.05,samples[si]+Form(", mean = %.2f",h->GetMean()),getCol(si));
+    }
+    can->Print(pdf);
+    
+    // now draw normalized?
+    if (0) {
+      for (int si=0;si<Nsamples;++si) {
+        TH1 *h=hists[si]; h->SetYTitle("Normalized frequency");
+        h->DrawNormalized(si==0?"":"same");
+        h->DrawNormalized("same hist");
+        drawText(0.65,0.90-si*0.05,samples[si]+Form(", mean = %.2f",h->GetMean()),getCol(si));
+      }
+      can->Print(pdf);
+    }
+    
+    // Normalize according to cross section - need Nevts and cross section
+    if (1) {
+      for (int si=0;si<Nsamples;++si) {
+        TH1 *h=hists[si]; h->SetYTitle("Expected number of events");
+        h->Scale(weights[si]);
+        h->Draw(si==0?"":"same");
+        h->Draw("same hist");
+        drawText(0.65,0.90-si*0.05,samples[si]+Form(", mean = %.2f",h->GetMean()),getCol(si));
+      }
+      can->Print(pdf);
+    }
+    
+  }
+
+  can->Print(pdf+"]");
+  printf("  Produced: %s\n\n",pdf.Data());
+}

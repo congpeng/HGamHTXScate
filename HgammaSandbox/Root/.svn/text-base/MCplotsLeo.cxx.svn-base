@@ -1,0 +1,388 @@
+#include "HgammaSandbox/MCplotsLeo.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "HGamAnalysisFramework/TruthUtils.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(MCplotsLeo)
+
+
+
+MCplotsLeo::MCplotsLeo(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+
+
+MCplotsLeo::~MCplotsLeo()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+EL::StatusCode MCplotsLeo::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  //TRUTH HISTOGRAMS
+  histoStore()->createTH1F("pt_yy", 40, 0, 200,";truth #it{p}_{T#gamma#gamma} [GeV]");
+  histoStore()->createTH1F("m_yy", 50, 110, 140,";truth #it{m}_{#gamma#gamma} [GeV]");
+  histoStore()->createTH1F("Rapidity_yy", 32, -8, 8,";truth #it{y}_{#gamma#gamma} ");
+  histoStore()->createTH1F("eta_truth_photon",12,-3,3,";truth #eta_{#gamma}");
+  histoStore()->createTH1F("pt_truth_photon",40,0,200,";truth #it{p}_{T#gamma} [GeV]");
+  histoStore()->createTH1F("bjet_n",10,-0.5,9.5,";#it{N}_{truth-bjets}");
+  histoStore()->createTH1F("bjet_n25",10,-0.5,9.5,";#it{N}_{truth-bjets}");
+  histoStore()->createTH1F("jet_n",10,-0.5,9.5,";#it{N}_{truth-jets}");
+  histoStore()->createTH1F("jet_n25",10,-0.5,9.5,";#it{N}_{truth-jets}");
+  histoStore()->createTH1F("ljet_n",10,-0.5,9.5,";#it{N}_{truth-ljets}");
+  histoStore()->createTH1F("ljet_n25",10,-0.5,9.5,";#it{N}_{truth-ljets}");
+  histoStore()->createTH1F("cjet_n",10,-0.5,9.5,";#it{N}_{truth-cjets}");
+  histoStore()->createTH1F("cjet_n25",10,-0.5,9.5,";#it{N}_{truth-cjets}");
+  histoStore()->createTH1F("Bhad_n",10,-0.5,9.5,";#it{N}_{truth-Bhadrons}");
+  histoStore()->createTH1F("Bhad_n25",10,-0.5,9.5,";#it{N}_{truth-Bhadrons}");
+  histoStore()->createTH1F("Dhad_n",10,-0.5,9.5,";#it{N}_{truth-Dhadrons}");
+  histoStore()->createTH1F("Dhad_n25",10,-0.5,9.5,";#it{N}_{truth-Dhadrons}");
+  histoStore()->createTH1F("ph_n",10,-0.5,9.5,";#it{N}_{truth-photons}");
+  histoStore()->createTH1F("ph_n25",10,-0.5,9.5,";#it{N}_{truth-photons}");
+  histoStore()->createTH1F("elec_n",10,-0.5,9.5,";#it{N}_{truth-electrons}");
+  histoStore()->createTH1F("elec_n25",10,-0.5,9.5,";#it{N}_{truth-electrons}");
+  histoStore()->createTH1F("muon_n",10,-0.5,9.5,";#it{N}_{truth-muons}");
+  histoStore()->createTH1F("muon_n25",10,-0.5,9.5,";#it{N}_{truth-muons}");
+  histoStore()->createTH1F("phHiggs_n",10,-0.5,9.5,";#it{N}_{#gamma-Higgs}");
+  histoStore()->createTH1F("phHiggs_n25",10,-0.5,9.5,";#it{N}_{#gamma-Higgs}");
+  histoStore()->createTH1F("muonsBs_n",10,-0.5,9.5,";#it{N}_{muonsFromBs}");
+  histoStore()->createTH1F("muonsBs_n25",10,-0.5,9.5,";#it{N}_{muonsFromBs}");
+  histoStore()->createTH1F("rapidity_truth_bjets", 16, -8, 8,";truth #it{y}_{bjets} ");
+  histoStore()->createTH1F("rapidity_truth_bjets_lead", 16, -8, 8,";truth #it{y}_{bjets} ");
+  histoStore()->createTH1F("deltaphi_truth_bjets", 16, -8, 8,";truth #it{delta#phi}_{bjets} ");
+  histoStore()->createTH1F("deltar_truth_bjets", 10, 0, 10,";truth #it{deltaR}_{bjets} ");
+  histoStore()->createTH1F("drapidity_truth_bjets", 16, 0, 8,";truth #it{deltay}_{bjets} ");
+  histoStore()->createTH1F("pt_bb", 40, 0, 200,";truth #it{p}_{Tbb} [GeV]");
+  histoStore()->createTH1F("m_bb", 100, 0, 1000,";truth #it{m}_{bb} [GeV]");
+  histoStore()->createTH2F("m_yy_vs_m_bb", 100, 0, 1000,50,110,140,"truth #it{m}_{bb} [GeV];truth #it{m}_{#gamma#gamma} [GeV]");
+  histoStore()->createTH2F("m_yy_vs_m_ll", 100, 0, 1000,50,110,140,"truth #it{m}_{ll} [GeV];truth #it{m}_{#gamma#gamma} [GeV]");
+  histoStore()->createTH2F("m_yy_vs_m_cc", 100, 0, 1000,50,110,140,"truth #it{m}_{cc} [GeV];truth #it{m}_{#gamma#gamma} [GeV]");
+  histoStore()->createTH2F("m_yy_vs_m_jj", 100, 0, 1000,50,110,140,"truth #it{m}_{jj} [GeV];truth #it{m}_{#gamma#gamma} [GeV]");
+  histoStore()->createTH1F("pt_truth_bjets_lead", 40, 0, 200,";truth #it{p}_{Tbjets} [GeV]");
+  histoStore()->createTH1F("prapidity_truth_bjets_lead", 16, -8, 8,";truth #it{#eta}_{bjets} ");
+  histoStore()->createTH1F("pt_truth_bjets", 40, 0, 200,";truth #it{p}_{Tbjets} [GeV]");
+  histoStore()->createTH1F("prapidity_truth_bjets", 16, -8, 8,";truth #it{#eta}_{bjets} ");
+  histoStore()->createTH1F("rapidity_truth_cjets", 16, -8, 8,";truth #it{y}_{cjets} ");
+  histoStore()->createTH1F("rapidity_truth_cjets_lead", 16, -8, 8,";truth #it{y}_{cjets} ");
+  histoStore()->createTH1F("deltaphi_truth_cjets", 16, -8, 8,";truth #it{delta#phi}_{cjets} ");
+  histoStore()->createTH1F("deltar_truth_cjets", 10, 0, 10,";truth #it{deltaR}_{cjets} ");
+  histoStore()->createTH1F("drapidity_truth_cjets", 16, 0, 8,";truth #it{deltay}_{cjets} ");
+  histoStore()->createTH1F("pt_cc", 40, 0, 200,";truth #it{p}_{Tcc} [GeV]");
+  histoStore()->createTH1F("m_cc", 100, 0, 1000,";truth #it{m}_{cc} [GeV]");
+  histoStore()->createTH1F("pt_truth_cjets_lead", 40, 0, 200,";truth #it{p}_{Tcjets} [GeV]");
+  histoStore()->createTH1F("prapidity_truth_cjets_lead", 16, -8, 8,";truth #it{#eta}_{cjets} ");
+  histoStore()->createTH1F("pt_truth_cjets", 40, 0, 200,";truth #it{p}_{Tcjets} [GeV]");
+  histoStore()->createTH1F("prapidity_truth_cjets", 16, -8, 8,";truth #it{#eta}_{cjets} ");
+  histoStore()->createTH1F("rapidity_truth_ljets", 16, -8, 8,";truth #it{y}_{lightjets} ");
+  histoStore()->createTH1F("rapidity_truth_ljets_lead", 16, -8, 8,";truth #it{y}_{lightjets} ");
+  histoStore()->createTH1F("deltaphi_truth_ljets", 16, -8, 8,";truth #it{delta#phi}_{lightjets} ");
+  histoStore()->createTH1F("deltar_truth_ljets", 10, 0, 10,";truth #it{deltaR}_{lightjets} ");
+  histoStore()->createTH1F("drapidity_truth_ljets", 16, 0, 8,";truth #it{deltay}_{lightjets} ");
+  histoStore()->createTH1F("pt_ll", 40, 0, 200,";truth #it{p}_{Tll} [GeV]");
+  histoStore()->createTH1F("m_ll", 100, 0, 1000,";truth #it{m}_{ll} [GeV]");
+  histoStore()->createTH1F("pt_truth_ljets_lead", 40, 0, 200,";truth #it{p}_{Tlightjets} [GeV]");
+  histoStore()->createTH1F("prapidity_truth_ljets_lead", 16, -8, 8,";truth #it{#eta}_{lightjets} ");
+  histoStore()->createTH1F("pt_truth_ljets", 40, 0, 200,";truth #it{p}_{Tlightjets} [GeV]");
+  histoStore()->createTH1F("prapidity_truth_ljets", 16, -8, 8,";truth #it{#eta}_{lightjets} ");
+  histoStore()->createTH1F("rapidity_truth_jets", 16, -8, 8,";truth #it{y}_{jets} ");
+  histoStore()->createTH1F("rapidity_truth_jets_lead", 16, -8, 8,";truth #it{y}_{jets} ");
+  histoStore()->createTH1F("deltaphi_truth_jets", 16, -8, 8,";truth #it{delta#phi}_{jets} ");
+  histoStore()->createTH1F("deltar_truth_jets", 10, 0, 10,";truth #it{deltaR}_{jets} ");
+  histoStore()->createTH1F("drapidity_truth_jets", 16, 0, 8,";truth #it{deltay}_{jets} ");
+  histoStore()->createTH1F("pt_jj", 40, 0, 200,";truth #it{p}_{Tjj} [GeV]");
+  histoStore()->createTH1F("m_jj", 100, 0, 1000,";truth #it{m}_{jj} [GeV]");
+  histoStore()->createTH1F("pt_truth_jets_lead", 40, 0, 200,";truth #it{p}_{Tjets} [GeV]");
+  histoStore()->createTH1F("prapidity_truth_jets_lead", 16, -8, 8,";truth #it{#eta}_{jets} ");
+  histoStore()->createTH1F("pt_truth_jets", 40, 0, 200,";truth #it{p}_{Tjets} [GeV]");
+  histoStore()->createTH1F("prapidity_truth_jets", 16, -8, 8,";truth #it{#eta}_{jets} ");
+  //RECO HISTOGRAMS
+  histoStore()->createTH1F("Nreco_photons",20,-0.5,19.5,";#it{N}_{photons}");
+  histoStore()->createTH1F("jet_n_reco",10,-0.5,9.5,";#it{N}_{jets}");
+  histoStore()->createTH1F("pt_yyreco", 40, 0, 200,";tight #it{p}_{T#gamma#gamma} [GeV]");
+  histoStore()->createTH1F("m_yyreco", 50, 110, 140,";tight #it{m}_{#gamma#gamma} [GeV]");
+  histoStore()->createTH1F("Rapidity_yyreco", 32, -8, 8,";tight #it{y}_{#gamma#gamma} ");
+  histoStore()->createTH1F("rapidity_jets", 16, -8, 8,";#it{y}_{jets} ");
+  histoStore()->createTH1F("rapidity_jets_lead", 16, -8, 8,";#it{y}_{jets} ");
+  histoStore()->createTH1F("deltaphi_jets", 16, -8, 8,";#it{delta#phi}_{jets} ");
+  histoStore()->createTH1F("deltar_jets", 10, 0, 10,";#it{deltaR}_{jets} ");
+  histoStore()->createTH1F("drapidity_jets", 16, 0, 8,";#it{deltay}_{jets} ");
+  histoStore()->createTH1F("pt_jj_reco", 40, 0, 200,";#it{p}_{Tjj} [GeV]");
+  histoStore()->createTH1F("m_jj_reco", 100, 0, 1000,";#it{m}_{jj} [GeV]");
+  histoStore()->createTH1F("pt_jets_lead", 40, 0, 200,";#it{p}_{Tjets} [GeV]");
+  histoStore()->createTH1F("prapidity_jets_lead", 16, -8, 8,";#it{#eta}_{jets} ");
+  histoStore()->createTH1F("pt_jets", 40, 0, 200,";#it{p}_{Tjets} [GeV]");
+  histoStore()->createTH1F("prapidity_jets", 16, -8, 8,";#it{#eta}_{jets} ");
+  histoStore()->createTH1F("eta_photon",12,-3,3,";tight #eta_{#gamma}");
+  histoStore()->createTH1F("pt_photon",40,0,200,";tight #it{p}_{T#gamma} [GeV]");
+  histoStore()->createTH2F("m_yy_vs_m_jj_reco", 100, 0, 1000,50,110,140,"tight #it{m}_{jj} [GeV];tight #it{m}_{#gamma#gamma} [GeV]");
+ 
+
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode MCplotsLeo::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+ // 1. Grab the truth particles
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticle" ).isFailure() ) {
+    Error("execute()", "Failed to retrieve TruthParticle container." );
+    return EL::StatusCode::FAILURE;
+  }
+  
+  // 2. Get a few reco vectors
+  // Fetch corrected photons
+  xAOD::PhotonContainer photons_all = photonHandler()->getCorrectedContainer();
+  xAOD::PhotonContainer photons = photonHandler()->applySelection(photons_all);
+  // Fetch Jets
+  xAOD::JetContainer jets_all = jetHandler()->getCorrectedContainer();
+  xAOD::JetContainer jets_pres = jetHandler()->applySelection(jets_all);
+  // Fetch Electrons
+  xAOD::ElectronContainer electrons_all = electronHandler()->getCorrectedContainer();
+  xAOD::ElectronContainer electrons = electronHandler()->applySelection(electrons_all);
+  
+  //3. Truth jets
+  
+  const xAOD::JetContainer *truthjets = 0;
+  if (event()->retrieve(truthjets,"AntiKt4TruthJets").isFailure() ){
+    Error("execute()", "Failed to retrieve AntiKt4TruthJets container." );
+    return EL::StatusCode::FAILURE;
+  }
+  
+  // loop over the jets in the container
+  xAOD::JetContainer::const_iterator trjet_itr = truthjets->begin();
+  xAOD::JetContainer::const_iterator trjet_end = truthjets->end();
+  std::vector<TLorentzVector> Truthjets;
+  TLorentzVector truthjet;
+  for( ; trjet_itr != trjet_end; ++trjet_itr ) {
+    truthjet.SetPtEtaPhiM((*trjet_itr)->pt(),(*trjet_itr)->eta(),(*trjet_itr)->phi(),(*trjet_itr)->m());
+    Truthjets.push_back(truthjet);
+  } // end for loop over jets
+  
+  HG::TruthParticleStruct truth = HG::identifyTruthParticles(truthPtcls,truthjets);
+ 
+  //Create container for jets and bjets that we select (After isolation etc)
+  xAOD::JetContainer jetsreco(SG::VIEW_ELEMENTS);
+  //Create 4Vectors
+  std::vector <TLorentzVector> jet4V; 
+
+  //5. save truth information
+  HG::TruthJets bjets25(SG::VIEW_ELEMENTS);    
+  for (auto bjet : truth.bJets )
+    if (bjet->pt()>25*HG::GeV)bjets25.push_back(bjet);
+  HG::TruthJets cjets25(SG::VIEW_ELEMENTS);    
+  for (auto cjet : truth.cJets )
+    if (cjet->pt()>25*HG::GeV)cjets25.push_back(cjet);
+  HG::TruthJets ljets25(SG::VIEW_ELEMENTS);    
+  for (auto ljet : truth.lightJets )
+    if (ljet->pt()>25*HG::GeV)ljets25.push_back(ljet);
+  HG::TruthJets jets25(SG::VIEW_ELEMENTS);    
+  for (auto jet : truth.jets )
+    if (jet->pt()>25*HG::GeV)jets25.push_back(jet);
+  HG::TruthPtcls ph25(SG::VIEW_ELEMENTS);    
+  for (auto ph : truth.photons)
+    if (ph->pt()>25*HG::GeV)ph25.push_back(ph);
+  HG::TruthPtcls elec25(SG::VIEW_ELEMENTS);    
+  for (auto el : truth.electrons )
+    if (el->pt()>25*HG::GeV)elec25.push_back(el); 
+  //6.Fill histograms (truth)
+  histoStore()->fillTH1F("bjet_n",(truth.bJets.size()));
+  histoStore()->fillTH1F("bjet_n25",(bjets25.size())); 
+  histoStore()->fillTH1F("ph_n",(truth.photons.size()));
+  histoStore()->fillTH1F("ph_n25",(ph25.size())); 
+  histoStore()->fillTH1F("elec_n",(truth.electrons.size()));
+  histoStore()->fillTH1F("elec_n25",(elec25.size())); 
+  histoStore()->fillTH1F("muon_n",(truth.muons.size()));
+  histoStore()->fillTH1F("phHiggs_n",(truth.photonsFromHiggs.size())); 
+  histoStore()->fillTH1F("Bhad_n",(truth.Bhadrons.size()));
+  histoStore()->fillTH1F("Dhad_n",(truth.Dhadrons.size()));
+  histoStore()->fillTH1F("muonsBs_n",(truth.muonsFromBs.size()));
+  histoStore()->fillTH1F("cjet_n",(truth.cJets.size()));
+  histoStore()->fillTH1F("cjet_n25",(cjets25.size())); 
+  histoStore()->fillTH1F("ljet_n",(truth.lightJets.size()));
+  histoStore()->fillTH1F("ljet_n25",(ljets25.size())); 
+  histoStore()->fillTH1F("jet_n",(truth.jets.size()));
+  histoStore()->fillTH1F("jet_n25",(jets25.size())); 
+
+  for ( auto t_gam : ph25 ) {
+    histoStore()->fillTH1F("pt_truth_photon",t_gam->pt()/HG::GeV);
+    histoStore()->fillTH1F("eta_truth_photon",t_gam->eta());
+  }
+  
+  //6a. the Higgs pT and Rapidity (truth)
+  if(ph25.size()>1){
+    TLorentzVector yy = ph25[0]->p4()+ph25[1]->p4();
+    histoStore()->fillTH1F("pt_yy",yy.Pt()/HG::GeV);
+    histoStore()->fillTH1F("m_yy",yy.M()/HG::GeV);
+    histoStore()->fillTH1F("Rapidity_yy",yy.Rapidity());
+    
+    //6b. Fill truth jets histograms
+    if(bjets25.size()>1){
+      for ( auto bjet : bjets25 ) {
+	histoStore()->fillTH1F("pt_truth_bjets",bjet->pt()/HG::GeV);
+	histoStore()->fillTH1F("prapidity_truth_bjets",bjet->eta());
+	histoStore()->fillTH1F("rapidity_truth_bjets",bjet->rapidity());
+      }
+      histoStore()->fillTH1F("pt_truth_bjets_lead",bjets25[0]->pt()/HG::GeV);
+      histoStore()->fillTH1F("prapidity_truth_bjets_lead",bjets25[0]->eta());
+      histoStore()->fillTH1F("rapidity_truth_bjets_lead",bjets25[0]->rapidity());
+      TLorentzVector b1=bjets25[0]->p4(), b2 = bjets25[1]->p4();
+      histoStore()->fillTH1F("drapidity_truth_bjets",fabs(b1.Rapidity()-b2.Rapidity()));
+      histoStore()->fillTH1F("deltaphi_truth_bjets",b1.DeltaPhi(b2));
+      histoStore()->fillTH1F("deltar_truth_bjets",b1.DeltaR(b2));
+      TLorentzVector bb = b1+b2;
+      histoStore()->fillTH1F("pt_bb",bb.Pt()/HG::GeV);
+      histoStore()->fillTH1F("m_bb",bb.M()/HG::GeV);
+      histoStore()->fillTH2F("m_yy_vs_m_bb",bb.M()/HG::GeV,yy.M()/HG::GeV);
+    }
+    if(ljets25.size()>1){
+      for ( auto ljet : ljets25 ) {
+	histoStore()->fillTH1F("pt_truth_ljets",ljet->pt()/HG::GeV);
+	histoStore()->fillTH1F("prapidity_truth_ljets",ljet->eta());
+	histoStore()->fillTH1F("rapidity_truth_ljets",ljet->rapidity());
+      }
+      histoStore()->fillTH1F("pt_truth_ljets_lead",ljets25[0]->pt()/HG::GeV);
+      histoStore()->fillTH1F("prapidity_truth_ljets_lead",ljets25[0]->eta());
+      histoStore()->fillTH1F("rapidity_truth_ljets_lead",ljets25[0]->rapidity());
+      TLorentzVector l1=ljets25[0]->p4(), l2 = ljets25[1]->p4();
+      histoStore()->fillTH1F("drapidity_truth_ljets",fabs(l1.Rapidity()-l2.Rapidity()));
+      histoStore()->fillTH1F("deltaphi_truth_ljets",l1.DeltaPhi(l2));
+      histoStore()->fillTH1F("deltar_truth_ljets",l1.DeltaR(l2));
+      TLorentzVector ll = l1+l2;
+      histoStore()->fillTH1F("pt_ll",ll.Pt()/HG::GeV);
+      histoStore()->fillTH1F("m_ll",ll.M()/HG::GeV);
+      histoStore()->fillTH2F("m_yy_vs_m_ll",ll.M()/HG::GeV,yy.M()/HG::GeV);
+    }
+    if(cjets25.size()>1){
+      for ( auto cjet : cjets25 ) {
+	histoStore()->fillTH1F("pt_truth_cjets",cjet->pt()/HG::GeV);
+	histoStore()->fillTH1F("prapidity_truth_cjets",cjet->eta());
+	histoStore()->fillTH1F("rapidity_truth_cjets",cjet->rapidity());
+      }
+      histoStore()->fillTH1F("pt_truth_cjets_lead",cjets25[0]->pt()/HG::GeV);
+      histoStore()->fillTH1F("prapidity_truth_cjets_lead",cjets25[0]->eta());
+      histoStore()->fillTH1F("rapidity_truth_cjets_lead",cjets25[0]->rapidity());
+      TLorentzVector c1=cjets25[0]->p4(), c2 = cjets25[1]->p4();
+      histoStore()->fillTH1F("drapidity_truth_cjets",fabs(c1.Rapidity()-c2.Rapidity()));
+      histoStore()->fillTH1F("deltaphi_truth_cjets",c1.DeltaPhi(c2));
+      histoStore()->fillTH1F("deltar_truth_cjets",c1.DeltaR(c2));
+      TLorentzVector cc = c1+c2;
+      histoStore()->fillTH1F("pt_cc",cc.Pt()/HG::GeV);
+      histoStore()->fillTH1F("m_cc",cc.M()/HG::GeV);
+      histoStore()->fillTH2F("m_yy_vs_m_cc",cc.M()/HG::GeV,yy.M()/HG::GeV);
+    }
+    if (jets25.size()>1){
+      for ( auto jet : jets25 ) {
+	histoStore()->fillTH1F("pt_truth_jets",jet->pt()/HG::GeV);
+	histoStore()->fillTH1F("prapidity_truth_jets",jet->eta());
+	histoStore()->fillTH1F("rapidity_truth_jets",jet->rapidity());
+      }
+      histoStore()->fillTH1F("pt_truth_jets_lead",jets25[0]->pt()/HG::GeV);
+      histoStore()->fillTH1F("prapidity_truth_jets_lead",jets25[0]->eta());
+      histoStore()->fillTH1F("rapidity_truth_jets_lead",jets25[0]->rapidity());
+      TLorentzVector j1=jets25[0]->p4(), j2 = jets25[1]->p4();
+      histoStore()->fillTH1F("drapidity_truth_jets",fabs(j1.Rapidity()-j2.Rapidity()));
+      histoStore()->fillTH1F("deltaphi_truth_jets",j1.DeltaPhi(j2));
+      histoStore()->fillTH1F("deltar_truth_jets",j1.DeltaR(j2));
+      TLorentzVector jj = j1+j2;
+      histoStore()->fillTH1F("pt_jj",jj.Pt()/HG::GeV);
+      histoStore()->fillTH1F("m_jj",jj.M()/HG::GeV);
+      histoStore()->fillTH2F("m_yy_vs_m_jj",jj.M()/HG::GeV,yy.M()/HG::GeV);
+    }
+    
+  }
+
+  //Finished truth stuff
+  //RECO
+  //1. Tight reco photons histograms
+  histoStore()->fillTH1F("Nreco_photons",photons.size());
+  for ( auto t_gam : photons ) {
+    histoStore()->fillTH1F("pt_photon",t_gam->pt()/HG::GeV);
+    histoStore()->fillTH1F("eta_photon",t_gam->eta());
+  }
+  if(photons.size()>1){
+    //2.Begin jet selection (reco)
+    int jetCount  = 0;
+    
+    for( auto jet : jets_pres )
+      {
+	bool overlap = false;
+	//___________________________________________________________________________________________
+	// Photon Overlap Check
+	double dRJetY1 = jet->p4().DeltaR(photons[0]->p4());
+	double dRJetY2 = jet->p4().DeltaR(photons[1]->p4());
+	if(dRJetY1 < 0.4 || dRJetY2 < 0.4) continue;  // Do not include jets that overlap with any of the leading photons.
+	
+	//___________________________________________________________________________________________
+	// Electron Overlap Check
+	for(auto electron : electrons )
+	  {
+	    double dRJetE = jet->p4().DeltaR(electron->p4());
+	    if(dRJetE > 0.2) continue; //Check overlap
+	    overlap = true;
+	    break;
+	  }
+	if(overlap) continue; //Do not include jets that overlap selected electrons.
+	
+	jetsreco.push_back(jet);
+	jet4V.push_back(jet->p4());
+	jetCount++;
+	
+      }
+    
+    // 3a. Fill multiplicity histograms
+    histoStore()->fillTH1F("jet_n_reco",jetCount);
+    
+    //3b. the Higgs pT and Rapidity (reco)
+    TLorentzVector yyreco = photons[0]->p4()+photons[1]->p4();
+    histoStore()->fillTH1F("pt_yyreco",yyreco.Pt()/HG::GeV);
+    histoStore()->fillTH1F("m_yyreco",yyreco.M()/HG::GeV);
+    histoStore()->fillTH1F("Rapidity_yyreco",yyreco.Rapidity());
+    
+    //3c. Fill reco jets histograms
+    if (jetsreco.size()>1){
+      for ( auto jet : jetsreco ) {
+	histoStore()->fillTH1F("pt_jets",jet->pt()/HG::GeV);
+	histoStore()->fillTH1F("prapidity_jets",jet->eta());
+	histoStore()->fillTH1F("rapidity_jets",jet->rapidity());
+      }
+      histoStore()->fillTH1F("pt_jets_lead",jet4V[0].Pt()/HG::GeV);
+      histoStore()->fillTH1F("prapidity_jets_lead",jet4V[0].Eta());
+      histoStore()->fillTH1F("rapidity_jets_lead",jet4V[0].Rapidity());
+      TLorentzVector j1reco=jet4V[0], j2reco = jet4V[1];
+      histoStore()->fillTH1F("drapidity_jets",fabs(j1reco.Rapidity()-j2reco.Rapidity()));
+      histoStore()->fillTH1F("deltaphi_jets",j1reco.DeltaPhi(j2reco));
+      histoStore()->fillTH1F("deltar_jets",j1reco.DeltaR(j2reco));
+      TLorentzVector jjreco = j1reco+j2reco;
+      histoStore()->fillTH1F("pt_jj_reco",jjreco.Pt()/HG::GeV);
+      histoStore()->fillTH1F("m_jj_reco",jjreco.M()/HG::GeV);
+      histoStore()->fillTH2F("m_yy_vs_m_jj_reco",jjreco.M()/HG::GeV,yyreco.M()/HG::GeV);
+    }
+  }
+  return EL::StatusCode::SUCCESS;
+}

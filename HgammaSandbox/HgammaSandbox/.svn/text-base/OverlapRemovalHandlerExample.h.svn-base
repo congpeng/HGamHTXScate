@@ -1,0 +1,60 @@
+#ifndef HgammaSandbox_OverlapRemovalHandlerExample_H
+#define HgammaSandbox_OverlapRemovalHandlerExample_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+#include "HgammaSandbox/OverlapRemovalHandlerKL.h"
+
+
+class OverlapRemovalHandlerExample : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+
+#ifndef __CINT__
+  HG::OverlapRemovalHandlerKL *m_overlapRemovalHandlerKL; //!
+#endif // __CINT__
+
+  
+  inline virtual HG::OverlapRemovalHandlerKL*    overlapHandlerKL()    { return m_overlapRemovalHandlerKL; }
+
+private:
+  
+  void fillHistos_Rapidity(xAOD::PhotonContainer &photons,
+			   xAOD::JetContainer &jets,
+			   xAOD::ElectronContainer &elecs,
+			   xAOD::MuonContainer &muons, 
+			   TString histSuffix);
+  
+  void fillHistos_Eta(xAOD::PhotonContainer &photons,
+		      xAOD::JetContainer &jets,
+		      xAOD::ElectronContainer &elecs,
+		      xAOD::MuonContainer &muons, 
+		      TString histSuffix);
+
+  void fillHistos_ElecElec(xAOD::ElectronContainer &elecs,
+			   TString histSuffix);
+
+  void fillHistos_VH(xAOD::ElectronContainer &elecs,
+		     xAOD::MuonContainer &muons,
+		     TString histSuffix);
+
+ public:
+  // this is a standard constructor
+  OverlapRemovalHandlerExample() { }
+  OverlapRemovalHandlerExample(const char *name);
+  virtual ~OverlapRemovalHandlerExample();
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode initialize();
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(OverlapRemovalHandlerExample, 1);
+};
+
+#endif // HgammaSandbox_OverlapRemovalHandlerExample_H

@@ -1,0 +1,46 @@
+#ifndef HgammaSandbox_MCplotsLeo_H
+#define HgammaSandbox_MCplotsLeo_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+class MCplotsLeo : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+
+
+  // variables that don't get filled at submission time should be
+  // protected from being send from the submission node to the worker
+  // node (done by the //!)
+private:
+  // Tree *myTree; //!
+  // TH1 *myHist; //!
+
+
+
+public:
+  // this is a standard constructor
+  MCplotsLeo() { }
+  MCplotsLeo(const char *name);
+  virtual ~MCplotsLeo();
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+
+#ifndef __CINT__
+  // helper method to fill eff histos
+  void fillEffHistos(const xAOD::TruthParticle *t_gam, bool match, TString recoType);
+  bool isCentral(const xAOD::TruthParticle *t_gam);
+  bool isCrack(const xAOD::TruthParticle *t_gam);
+  bool isFwd(const xAOD::TruthParticle *t_gam);
+#endif
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(MCplotsLeo, 1);
+};
+
+#endif // HgammaSandbox_MCplotsLeo_H

@@ -1,0 +1,71 @@
+#ifndef IsolationPlots_PhotonReco_H
+#define IsolationPlots_PhotonReco_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+class PhotonReco : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+
+  class hist_param
+  {
+    public:
+    const char    *name;
+    int           bin;
+    double        xmin;
+    double        xmax;
+    const char    *xlabel;
+
+    hist_param(const char *nameI, int binI, double minI, double maxI, const char *xlabelI);
+
+  };
+
+  bool b_isLoose, b_isTight, b_isSel;
+  int  m_njets;
+
+  // variables that don't get filled at submission time should be
+  // protected from being send from the submission node to the worker
+  // node (done by the //!)
+private:
+  // Tree *myTree; //!
+  // TH1 *myHist; //!
+
+  bool isCentral( const xAOD::Photon *r_gam );
+  bool isCrack( const xAOD::Photon *r_gam );
+  bool isFwd( const xAOD::Photon *r_gam );
+
+  bool isCentral(const xAOD::TruthParticle *t_gam);
+  bool isCrack(const xAOD::TruthParticle *t_gam);
+  bool isFwd(const xAOD::TruthParticle *t_gam);
+
+  bool isTrueConvertedPhoton(const xAOD::TruthParticle* truePh, float maxRadius = 800.);
+
+  void fillTruthKinematics(const xAOD::TruthParticle *t_gam, TString etaReg, TString iObj);
+  void fillResolution(const xAOD::TruthParticle *t_gam, xAOD::Photon *r_gam, TString iObj, TString tag, TString ibin);
+  void fillTruthMatched(const xAOD::TruthParticle *t_gam, xAOD::Photon *r_gam, TString iObj, TString tag);
+  void fillHistRegions(const xAOD::TruthParticle *t_gam,xAOD::Photon *r_gam, TString iObj, TString tag); 
+  void fillEffHistos(const xAOD::TruthParticle *t_gam, bool match, TString tag, int phType);
+  void fillEffRegions(const xAOD::TruthParticle *t_gam, bool match, TString tag, int iph );
+
+public:
+  // this is a standard constructor
+  PhotonReco() { }
+  PhotonReco(const char *name);
+  virtual ~PhotonReco();
+  //std::vector<hist_param *> enableHisto;
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(PhotonReco, 1);
+};
+
+
+#endif // IsolationPlots_PhotonReco_H

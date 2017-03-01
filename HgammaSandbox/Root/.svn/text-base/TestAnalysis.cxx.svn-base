@@ -1,0 +1,168 @@
+#include "HgammaSandbox/TestAnalysis.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(TestAnalysis)
+
+
+
+TestAnalysis::TestAnalysis(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+
+
+TestAnalysis::~TestAnalysis()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+EL::StatusCode TestAnalysis::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  histoStore()->createTH1F("pT_j0", 100, 0, 200);
+  histoStore()->createTH1F("eta_j0", 90, -4.5, 4.5);
+  histoStore()->createTH1F("phi_j0", 62, -3.2, 3.2);
+  histoStore()->createTH1F("pT_j1", 100, 0, 200);
+  histoStore()->createTH1F("eta_j1", 90, -4.5, 4.5);
+  histoStore()->createTH1F("phi_j1", 62, -3.2, 3.2);
+  
+  histoStore()->createTH1F("m_jj", 140, 90, 160);
+  histoStore()->createTH1F("pT_jj", 100, 0, 200);
+  histoStore()->createTH1F("deltaR_jj", 40, 0, 4);
+  histoStore()->createTH1F("deltaPhi_jj", 32, 0, 3.2);
+
+  histoStore()->createTH1F("pT_y0", 100, 0, 200);
+  histoStore()->createTH1F("eta_y0", 120, -3., 3.);
+  histoStore()->createTH1F("phi_y0", 62, -3.2, 3.2);
+  histoStore()->createTH1F("pT_y1", 100, 0, 200);
+  histoStore()->createTH1F("eta_y1", 120, -3, 3);
+  histoStore()->createTH1F("phi_y1", 62, -3.2, 3.2);
+  
+  histoStore()->createTH1F("m_yy", 60, 110, 140);
+  histoStore()->createTH1F("pT_yy", 100, 0, 200);
+  histoStore()->createTH1F("deltaR_yy", 40, 0, 4);
+  histoStore()->createTH1F("deltaPhi_yy", 32, 0, 3.2);
+
+
+  histoStore()->createTH1F("pT_mu", 100, 0, 200);
+  histoStore()->createTH1F("eta_mu", 60, -3., 3.);
+  histoStore()->createTH1F("phi_mu", 62, -3.2, 3.2);
+
+  
+  histoStore()->createTH1F("pT_ele", 100, 0, 200);
+  histoStore()->createTH1F("eta_ele", 120, -3., 3.);
+  histoStore()->createTH1F("phi_ele", 62, -3.2, 3.2);
+
+  
+  event()->setAuxItemList( "MyCorrPhotonsAux.", "ethad1.widths2.pt.eta." );
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode TestAnalysis::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+
+  xAOD::PhotonContainer photons_all = photonHandler()->getCorrectedContainer();
+  xAOD::PhotonContainer photons = photonHandler()->applySelection(photons_all);
+
+  xAOD::JetContainer jets_all = jetHandler()->getCorrectedContainer();
+  xAOD::JetContainer jets = jetHandler()->applySelection(jets_all);
+
+  xAOD::ElectronContainer electrons_all = electronHandler()->getCorrectedContainer();
+  xAOD::ElectronContainer electrons = electronHandler()->applySelection(electrons_all);
+
+  xAOD::MuonContainer muons_all = muonHandler()->getCorrectedContainer();
+  xAOD::MuonContainer muons = muonHandler()->applySelection(muons_all);
+
+  if (photons.size() > 0) {
+
+       histoStore()->fillTH1F("pT_y0", (photons[0]->pt())/HG::GeV);
+       histoStore()->fillTH1F("eta_y0", photons[0]->caloCluster()->etaBE(2));
+       histoStore()->fillTH1F("phi_y0", photons[0]->phi());
+
+       if(photons.size() > 1){
+	 TLorentzVector h = photons[0]->p4() + photons[1]->p4();
+	 double DeltaR = photons[0]->p4().DeltaR(photons[1]->p4());
+	 double DeltaPhi = photons[0]->p4().DeltaPhi(photons[1]->p4());
+	 histoStore()->fillTH1F("m_yy", h.M()/HG::GeV);
+	 histoStore()->fillTH1F("pT_yy", h.Pt()/HG::GeV);
+	 histoStore()->fillTH1F("deltaR_yy", DeltaR);
+	 histoStore()->fillTH1F("deltaPhi_yy", abs(DeltaPhi));
+	 
+	 histoStore()->fillTH1F("pT_y1", (photons[1]->pt())/HG::GeV);
+	 histoStore()->fillTH1F("eta_y1", photons[1]->caloCluster()->etaBE(2));
+	 histoStore()->fillTH1F("phi_y1", photons[1]->phi());
+       }
+     }
+
+     if (jets.size() > 1) {
+       TLorentzVector h = jets[0]->p4() + jets[1]->p4();
+       double DeltaR = jets[0]->p4().DeltaR(jets[1]->p4());
+       double DeltaPhi = jets[0]->p4().DeltaPhi(jets[1]->p4());
+       histoStore()->fillTH1F("m_jj", h.M()/HG::GeV);
+       histoStore()->fillTH1F("pT_jj", h.Pt()/HG::GeV);
+       histoStore()->fillTH1F("deltaR_jj", DeltaR);
+       histoStore()->fillTH1F("deltaPhi_jj", abs(DeltaPhi));
+       
+       histoStore()->fillTH1F("pT_j0", (jets[0]->pt())/HG::GeV);
+       histoStore()->fillTH1F("pT_j1", (jets[1]->pt())/HG::GeV);
+       histoStore()->fillTH1F("eta_j0", jets[0]->eta());
+       histoStore()->fillTH1F("eta_j1", jets[1]->eta());
+       histoStore()->fillTH1F("phi_j0", jets[0]->phi());
+       histoStore()->fillTH1F("phi_j1", jets[1]->phi());
+       
+     }
+
+
+     if(muons.size() > 0){
+       histoStore()->fillTH1F("pT_mu", (muons[0]->pt())/HG::GeV);
+       histoStore()->fillTH1F("eta_mu", muons[0]->eta());
+       histoStore()->fillTH1F("phi_mu", muons[0]->phi());
+     }
+
+     if(electrons.size() > 0){
+       histoStore()->fillTH1F("pT_ele", (electrons[0]->pt())/HG::GeV);
+       histoStore()->fillTH1F("eta_ele", electrons[0]->eta());
+       histoStore()->fillTH1F("phi_ele", electrons[0]->phi());
+     }
+     
+     
+     if(photonHandler()->writeContainer(photons,"MyCorrPhotons") == EL::StatusCode::FAILURE)
+       HG::fatal("Failed to write MyCorrPhotons");
+     
+     // photonHandler()->writeContainer(photons,"MyPhotons"));
+     // event()->copy("PhotonCollection");
+     
+     if(!event()->copy("EventInfo").isSuccess()){
+       HG::fatal("Failed to copy EventInfo!");
+       return EL::StatusCode::FAILURE;
+     }
+     
+     event()->fill();
+     
+     return EL::StatusCode::SUCCESS;
+}

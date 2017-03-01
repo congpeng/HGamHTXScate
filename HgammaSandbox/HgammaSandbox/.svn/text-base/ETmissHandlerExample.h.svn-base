@@ -1,0 +1,66 @@
+#ifndef HgammaSandbox_ETmissHandlerExample_H
+#define HgammaSandbox_ETmissHandlerExample_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+#include "HgammaSandbox/ETmissHandlerLMMC15.h"
+
+//#include "METUtilities/METRebuilder.h"
+#include "METUtilities/METMaker.h"
+
+class ETmissHandlerExample : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+  //#ifndef __CINT__
+  HG::ETmissHandlerLMMC15 *m_eTmissHandlerLMMC15; //!
+  //#endif // __CINT__
+
+  inline virtual HG::ETmissHandlerLMMC15*    eTmissHandlerLMMC15()    { return m_eTmissHandlerLMMC15; }
+
+  int m_eventCounter;
+
+  double MET_RefFinal_CST_Ex=0.;
+  double MET_RefFinal_CST_Ey=0.;
+  double MET_RefFinal_CST=0.;
+  double MET_RefFinal_CST_sum=0.;
+
+  double MET_RefFinal_TST_Ex=0.;
+  double MET_RefFinal_TST_Ey=0.;
+  double MET_RefFinal_TST=0.;
+  double MET_RefFinal_TST_sum=0.;
+
+  double MET_RefFinal_TST2_Ex=0.;
+  double MET_RefFinal_TST2_Ey=0.;
+  double MET_RefFinal_TST2=0.;
+
+
+  // variables that don't get filled at submission time should be
+  // protected from being send from the submission node to the worker
+  // node (done by the //!)
+private:
+  // Tree *myTree; //!
+  // TH1 *myHist; //!
+
+  //met::METRebuilder  *metutil=0;
+  met::METMaker *m_metmaker=0;
+
+public:
+  // this is a standard constructor
+  ETmissHandlerExample() { }
+  ETmissHandlerExample(const char *name);
+  virtual ~ETmissHandlerExample();
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode initialize();
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(ETmissHandlerExample, 1);
+};
+
+#endif // HgammaSandbox_ETmissHandlerExample_H

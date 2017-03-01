@@ -1,0 +1,32 @@
+########"
+#
+# Configuration file for /afs/cern.ch/user/b/barak/FakePhoton/HgammaSandbox/PhotonFakeRate analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        PhotonFakeRate_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HGamDC14.config
+
+
+##################################
+# My Settings setup
+MinDRRecoTruth:  0.1
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+

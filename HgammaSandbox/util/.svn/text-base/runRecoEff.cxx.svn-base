@@ -1,0 +1,17 @@
+#include "HgammaSandbox/RecoEff.h"
+#include "HGamAnalysisFramework/RunUtils.h"
+
+int main( int argc, char* argv[] ) {
+  printf("\n====\n  runRecoEff\n====\n");
+  
+  // 1. Set up the job for xAOD access (must happen before step 2!!)
+  xAOD::Init().ignore();
+  
+  // 2. Create our algorithm
+  RecoEff *alg = new RecoEff("RecoEff");
+  
+  // 3. Submit the job
+  HG::runJob(alg,argc,argv);
+  
+  return 0;
+}

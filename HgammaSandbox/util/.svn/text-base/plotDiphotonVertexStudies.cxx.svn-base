@@ -1,0 +1,329 @@
+#include <iostream>
+#include <TString.h>
+#include <TFile.h>
+#include <TCanvas.h>
+#include <TGaxis.h>
+#include <TLatex.h>
+#include <TH1F.h>
+#include <TH2F.h>
+#include <TGraphAsymmErrors.h>
+
+using namespace std; 
+
+////////////////////////// Small and very helpful functions //////////////////////////
+
+void fatal(TString msg) { printf("\nFATAL\n  %s\n\n",msg.Data()); abort(); }
+
+
+TFile *openFile(TString fn) 
+{
+  TFile *f = TFile::Open(fn);
+  if (f==nullptr) fatal("Cannot open "+fn);
+  return f;
+}
+
+
+TH1 *getHisto(TFile *f, TString hn) 
+{
+  TH1 *h = (TH1*)f->Get(hn);
+  if (h==nullptr) fatal("Cannot access histo "+hn+" in file "+f->GetName());
+  return h;
+}
+
+TH2 *getHisto2D(TFile *f, TString hn)
+{
+  TH2 *h = (TH2*)f->Get(hn);
+  if (h==nullptr) fatal("Cannot access histo "+hn+" in file "+f->GetName());
+  return h;
+}
+
+TH1 *drawHisto(TH1 *h, TString opt, int col=kBlue, int lw=2) 
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->Draw(opt); return h;
+}
+
+TH1 *drawEffHisto(TH1 *h, TString opt, int col=kBlue, int lw=2) 
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->GetYaxis()->SetRangeUser(0.0,1.2); h->GetYaxis()->SetTitle("Efficiency / Bin");
+  h->SetTitleOffset( 1.2, "XY");
+  h->Draw(opt); return h;
+}
+
+TH1 *drawHistoNorm(TH1 *h, TString opt, int col=kBlue, int lw=2) 
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->GetYaxis()->SetTitle("Fraction of Events / Bin");
+  int nbins = h->GetNbinsX();
+  h->SetBinContent( 1, h->GetBinContent(0)+h->GetBinContent(1));
+  h->SetBinContent( nbins, h->GetBinContent(nbins) + h->GetBinContent(nbins+1) );
+  h->SetBinContent( 0, 0);
+  h->SetBinContent( nbins+1, 0);
+  h->Scale( 1. / h->Integral( 0, (nbins+3) ) );
+  h->SetMaximum( 1.3 * h->GetMaximum() );
+  h->SetTitleOffset( 1.2, "XY");
+  h->Draw(opt); return h;
+}
+
+TH1 *drawNormHisto(TH1 *h, TString opt, int col=kBlue, int lw=2) 
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->GetYaxis()->SetTitle("Fraction of Events / Bin");
+  int nbins = h->GetNbinsX();
+  h->Scale( 1. / h->Integral( 0, (nbins+3) ) );
+  h->SetMaximum( 1.3 * h->GetMaximum() );
+  h->Draw(opt); return h;
+}
+
+
+TH2 *drawHisto2D(TH2 *h, TString opt)
+{ 
+  h->SetStats(0);
+  h->Draw(opt); return h;
+}
+
+TH1 *drawEffHisto(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2) 
+{
+  return drawEffHisto(getHisto(f,hn),opt,col);
+}
+
+
+TH1 *drawHisto(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2) 
+{
+  return drawHisto(getHisto(f,hn),opt,col);
+}
+
+TH1 *drawHistoNorm(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2) 
+{
+  return drawHistoNorm(getHisto(f,hn),opt,col);
+}
+
+TH1 *drawDistro(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2)
+{
+  TH1 *htemp = drawHistoNorm( getHisto(f,hn), opt, col);
+  //hemp->Draw( opt );
+  gPad->Update();
+  double rightmax = 1.1 * htemp->GetMaximum();
+  double scale = gPad->GetUymax()/rightmax;
+  htemp->Scale(scale);
+  htemp->Draw( opt );
+
+  TGaxis *axis = new TGaxis(gPad->GetUxmax(),gPad->GetUymin(), gPad->GetUxmax(), gPad->GetUymax(), 0, rightmax, 503, "+L");
+  axis->SetLabelFont(42);
+  axis->SetLabelSize(0.035);
+  axis->SetLabelColor(kGray+2);
+  axis->SetLineColor(kGray+2);
+  axis->SetTitle("Fraction of Events / Bin");
+  axis->SetTitleFont(42);
+  axis->SetTitleSize(0.035);
+  axis->SetTitleColor(kGray+2);
+  axis->Draw();
+  return htemp;
+}
+
+TH1 *drawNormHisto(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2) 
+{
+  return drawNormHisto(getHisto(f,hn),opt,col);
+}
+
+
+TH2 *drawHisto2D(TFile *f, TString hn, TString opt)
+{
+  return drawHisto2D(getHisto2D(f,hn),opt);
+}
+
+void drawText(double x, double y, TString txt, int col=kBlack) 
+{
+  static TLatex *tex = new TLatex(); tex->SetNDC();
+  tex->SetTextFont(42); tex->SetTextSize(0.036); tex->SetTextColor(col);
+  tex->DrawLatex(x,y,txt);
+}
+
+void drawTextSmall(double x, double y, TString txt, int col=kBlack) 
+{
+  static TLatex *tex = new TLatex(); tex->SetNDC();
+  tex->SetTextFont(42); tex->SetTextSize(0.028); tex->SetTextColor(col);
+  tex->DrawLatex(x,y,txt);
+}
+
+void drawMajorLabels(TString file, int col=kBlack) {
+    if (file.Contains("ggH")) drawText(0.14,0.90,"ggF MC, 2 true higgs photons",col);
+    if (file.Contains("ttH")) drawText(0.14,0.90,"ttH MC, 2 true higgs photons",col);
+    if (file.Contains("VBF")) drawText(0.14,0.90,"VBF MC, 2 true higgs photons",col);
+    if  (file.Contains("WH"))  drawText(0.14,0.90,"WH MC, 2 true higgs photons",col);
+    if  (file.Contains("ZH"))  drawText(0.14,0.90,"ZH MC, 2 true higgs photons",col);
+    drawText(0.65,0.90,"#bf{#it{ATLAS}} Work In Progress",col);
+}
+
+void drawMajorLabels2D(TString file, int col=kBlack) {
+    if (file.Contains("ggH")) drawText(0.15,0.90,"ggF MC, 2 true higgs photons",col);
+    if (file.Contains("ttH")) drawText(0.15,0.90,"ttH MC, 2 true higgs photons",col);
+    if (file.Contains("VBF")) drawText(0.15,0.90,"VBF MC, 2 true higgs photons",col);
+    if  (file.Contains("WH"))  drawText(0.15,0.90,"WH MC, 2 true higgs photons",col);
+    if  (file.Contains("ZH"))  drawText(0.15,0.90,"ZH MC, 2 true higgs photons",col);
+    drawText(0.58,0.90,"#bf{#it{ATLAS}} Work In Progress",col);
+}
+
+void drawCutLabels( TString jcut, TString cutVal, int col=kBlack ) {
+  TString jtag = "";
+  if (jcut.Contains("_0jex")) jtag = "== 0 true jets";
+  if (jcut.Contains("_1jex")) jtag = "== 1 true jets";
+  if (jcut.Contains("_2jex")) jtag = "== 2 true jets";
+  if (jcut.Contains("_1jin")) jtag = "#geq 1 true jets";
+  if (jcut.Contains("_2jin")) jtag = "#geq 2 true jets";
+  if (jcut.Contains("_3jin")) jtag = "#geq 3 true jets";
+  
+  //double xmod = -0.53;
+  double xmod = 0.0; //0.03;
+  //if (jtag != "") xmod = -0.1;
+  drawText(0.15, 0.85, jtag,col);
+  
+  if      (cutVal.Contains("_100um")) drawText(0.68+xmod,0.85,"|z_{PV}^{truth} - z_{PV0}^{reco}| < 0.1 mm",col); 
+  if      (cutVal.Contains("_300um")) drawText(0.68+xmod,0.85,"|z_{PV}^{truth} - z_{PV0}^{reco}| < 0.3 mm",col); 
+  if      (cutVal.Contains("_500um")) drawText(0.68+xmod,0.85,"|z_{PV}^{truth} - z_{PV0}^{reco}| < 0.5 mm",col); 
+  if        (cutVal.Contains("_1mm")) drawText(0.68+xmod,0.85,"|z_{PV}^{truth} - z_{PV0}^{reco}| < 1 mm",col); 
+  if        (cutVal.Contains("_2mm")) drawText(0.68+xmod,0.85,"|z_{PV}^{truth} - z_{PV0}^{reco}| < 2 mm",col); 
+  if        (cutVal.Contains("_3mm")) drawText(0.68+xmod,0.85,"|z_{PV}^{truth} - z_{PV0}^{reco}| < 3 mm",col); 
+  else if   (cutVal.Contains("_5mm")) drawText(0.68+xmod,0.85,"|z_{PV}^{truth} - z_{PV0}^{reco}| < 5 mm",col);  
+  else if (cutVal.Contains("_10mm")) drawText(0.68+xmod,0.85,"|z_{PV}^{truth} - z_{PV0}^{reco}| < 10 mm",col);  
+  else if (cutVal.Contains("_20mm")) drawText(0.68+xmod,0.85,"|z_{PV}^{truth} - z_{PV0}^{reco}| < 20 mm",col); 
+}
+
+void drawMuBinLabels( TString jcut, TString ibin, int col=kRed) {
+  TString jtag = "";
+  if (jcut.Contains("_0jex")) jtag = "== 0 true jets";
+  if (jcut.Contains("_1jex")) jtag = "== 1 true jets";
+  if (jcut.Contains("_2jex")) jtag = "== 2 true jets";
+  if (jcut.Contains("_1jin")) jtag = "#geq 1 true jets";
+  if (jcut.Contains("_2jin")) jtag = "#geq 2 true jets";
+  if (jcut.Contains("_3jin")) jtag = "#geq 3 true jets";
+
+  double ymod = 0.0;
+  if (jtag != "") {
+    ymod = -0.05;
+    drawText(0.78, 0.85, jtag,col);
+  }
+  
+  if (ibin.Contains("_0bin")) drawText(0.78, 0.85+ymod, "#LT#mu#GT < 4.5", col);
+  if (ibin.Contains("_1bin")) drawText(0.78, 0.85+ymod,  "4.5 #leq #LT#mu#GT <  9.5", col);
+  if (ibin.Contains("_2bin")) drawText(0.78, 0.85+ymod,  "9.5 #leq #LT#mu#GT < 14.5", col);
+  if (ibin.Contains("_3bin")) drawText(0.78, 0.85+ymod, "14.5 #leq #LT#mu#GT < 19.5", col);
+  if (ibin.Contains("_4bin")) drawText(0.78, 0.85+ymod, "19.5 #leq #LT#mu#GT < 24.5", col);
+  if (ibin.Contains("_5bin")) drawText(0.78, 0.85+ymod, "24.5 #leq #LT#mu#GT < 29.5", col);
+  if (ibin.Contains("_6bin")) drawText(0.78, 0.85+ymod, "29.5 #leq #LT#mu#GT < 34.5", col);
+  if (ibin.Contains("_7bin")) drawText(0.78, 0.85+ymod, "34.5 #leq #LT#mu#GT < 39.5", col);
+}
+
+double integrate(TFile *f, TString hn )
+{ 
+  TH1 *h =  getHisto(f,hn); 
+  double sum = h->Integral(); 
+  return sum; 
+} 
+
+
+///////////////////////// The main plotting function ////////////////////////////////
+int main(int argc, char **argv) 
+{
+  // input file name
+  //TString inFN("Run/runRecoEff_2015.2.23_12.18.57/hist-sample.root"), pdf("plots.pdf");
+  TString inFN, pdf; 
+  for (int i=1;i<argc;++i) 
+  {
+    TString arg(argv[i]);
+    if (arg=="--inputFile") inFN=argv[++i];
+    if (arg=="--pdfFile") pdf=argv[++i];
+    if (arg=="-in") inFN=argv[++i];
+    if (arg=="-pdf") pdf=argv[++i];
+  }
+
+  printf("\n  Running plotRecoEff\n");
+  printf("  input file: %s\n",inFN.Data());
+  TFile *f = openFile(inFN);
+
+  // Create output pdf
+  // Set style
+  TCanvas *can = new TCanvas();
+  can->SetTopMargin(0.04); can->SetRightMargin(0.05);
+  can->Print(pdf+"[");
+
+  // ----------------------------------
+  // Plot single variable histograms
+  // ----------------------------------
+  
+  //for( TString hists: {"h_nTruePhotons","h_nPrimaryVtxs", "h_averageIPC",
+  //                       "h_true_vtx_z",  "h_reco_vtx_z", "h_tool_vtx_z", "h_my_vtx_z",
+  //                       "h_diff_vtx_z",  "h_nndiff_vtx_z", "h_mydiff_vtx_z",
+  //                       "h_reso_vtx", "h_min_dist_vtx", "h_dist_truth_PV0", "h_dist_truth_NN",
+  //                       "h_dist_NN_PV0", "h_PVi_truth", "h_PVi_NN", "h_PVi_Delta",
+  //                       "h_nCloser_NN", "h_nCloser_PV0"} ) {
+  
+  for ( TString hists: {"h_diff_vtx_z",  "h_nndiff_vtx_z", "h_reso_vtx"} ) {
+          TH1 *h = drawHistoNorm(f, hists ,"",kBlue);
+          drawMajorLabels(inFN,kBlack);
+          drawTextSmall(0.15,0.85,"Mean: "+to_string(h->GetMean()));
+          drawTextSmall(0.15,0.80,"RMS: "+to_string(h->GetRMS()));
+          can->Print(pdf);
+  }
+  
+  
+  // ----------------------------------
+  // Plot Efficiencies 
+  // ----------------------------------
+  can->SetGridy(1);
+  can->SetGridx(1);
+
+  
+  can->SetTopMargin(0.04); can->SetRightMargin(0.075);
+  for( TString jcut: {""} ) {
+    for( TString hvar: {"_sumpt", "_sumpt2", "_yypt", "_phpt", "_nlep", "_njet", "_nobj", "_nPV","_mu"} ) {
+      for( TString cutval: {"_300um"} ) {
+        //plot efficiencies
+        if (hvar == "_sumpt2") can->SetLogx(1);
+        else                   can->SetLogx(0);
+
+        drawEffHisto(f,   "h_eff"+hvar+cutval+jcut,     "", kRed);
+        drawEffHisto(f, "h_nneff"+hvar+cutval+jcut, "same", kBlue );
+        if (hvar != "_cut") drawDistro(f,             "h"+hvar+jcut, "same", kGray);
+        drawMajorLabels(inFN, kBlack); drawCutLabels(jcut, cutval);
+        
+        drawText(0.67, 0.35, "Hardest Vertex", kRed);
+        drawText(0.67, 0.30, "Photon Pointing NN", kBlue);
+        
+        can->Print(pdf);
+      }
+    }
+  }
+
+  can->SetGridy(0);
+  can->SetGridx(0);
+  //end grids for eff plots
+
+  for( TString jcut: {""} ) {
+    for( TString cutval: {"_300um"} ) {
+      TH1 *pv0  = drawEffHisto(f,   "h_eff_cut"+cutval+jcut,     "", kRed);
+      TH1 *pvnn = drawEffHisto(f, "h_nneff_cut"+cutval+jcut,     "", kBlue);
+      TH1 *pvmy = drawEffHisto(f, "h_myeff_cut"+cutval+jcut,     "", kMagenta);
+
+      double eff_pv0  =  pv0->GetBinContent(1);
+      double eff_pvnn = pvnn->GetBinContent(1);
+      double eff_pvmy = pvmy->GetBinContent(1);
+     
+      std::cerr << inFN << std::endl;
+      std::cerr << "CutVal"+cutval << std::endl;
+      std::cerr << "Efficiency: " << std::endl;
+      std::cerr << "    Hardest: " <<  eff_pv0 << std::endl; 
+      std::cerr << "   Pointing: " << eff_pvnn << std::endl; 
+      std::cerr << "     Hybrid: " << eff_pvmy << std::endl; 
+    }
+  }
+  
+  can->Print(pdf+"]");
+  printf("  Produced: %s\n\n",pdf.Data());
+  f->Close();
+
+
+}
+
+

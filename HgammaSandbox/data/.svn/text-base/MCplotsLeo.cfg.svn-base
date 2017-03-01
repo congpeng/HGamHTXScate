@@ -1,0 +1,34 @@
+########"
+#
+# Configuration file for /afs/cern.ch/user/l/lcerdaal/Hgamma/HgammaSandbox/MyAnalysis analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        MyAnalysis_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HgammaConfig.cfg
+
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+
+MxAOD.savePhotons:          true
+MxAOD.Photons.Variables:    pt.eta.phi.m.conv.SandrineIso5.SandrienIso6

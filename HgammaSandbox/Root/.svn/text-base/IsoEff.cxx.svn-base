@@ -1,0 +1,117 @@
+#include "HgammaSandbox/IsoEff.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "xAODEgamma/EgammaxAODHelpers.h"
+#include "xAODEgamma/PhotonxAODHelpers.h"
+#include "xAODTruth/xAODTruthHelpers.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(IsoEff)
+
+
+
+IsoEff::IsoEff(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+
+
+IsoEff::~IsoEff()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+EL::StatusCode IsoEff::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  TString eff = "; Isolation Efficiency";
+  TString wptags[3] = {"_Cone20", "_Cone20L", "_Cone20L++"};
+  for( TString wptag: wptags ) {
+    histoStore()->createTProfile( "h_pt"+wptag,  40,    0,  200, "; Photon p_{T} [GeV]"+eff);
+    histoStore()->createTProfile("h_eta"+wptag,  30,   -3,    3,        "; Photon #eta"+eff);
+    histoStore()->createTProfile( "h_mu"+wptag,  15, -0.5, 29.5,          "; #LT#mu#GT"+eff);
+    histoStore()->createTProfile("h_npv"+wptag,  15, -0.5, 29.5,             "; N_{PV}"+eff);
+    histoStore()->createTProfile("h_var"+wptag,   1, -0.5,  0.5, "; Average Efficiency"+eff);
+  }
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode IsoEff::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+  
+  //Get photons and apply some selection.
+  xAOD::PhotonContainer allPhotons = photonHandler()->getCorrectedContainer();
+  if (allPhotons.size()<1) return EL::StatusCode::SUCCESS; //require at least one photon.
+  xAOD::PhotonContainer photons = photonHandler()->applySelection(allPhotons);
+  if (photons.size()<1) return EL::StatusCode::SUCCESS; //require at least one photon.
+  
+ 
+  int nPhotons(0);
+  for( auto ph: photons) {
+    if (nPhotons > 0) break; //only consider the leading photon
+
+    // get truth 
+    const xAOD::TruthParticle *tph = xAOD::TruthHelpers::getTruthParticle(*ph);
+		if (!tph) continue; //require truth match
+   
+    // check origin for signal
+    int origin = xAOD::TruthHelpers::getParticleTruthOrigin(*ph);
+    if (origin != 14) continue;
+    nPhotons++;
+
+    // get iso vars
+    double tp20 = ph->isolationValue(xAOD::Iso::topoetcone20)*1e-3;
+    double pt20 = ph->isolationValue(xAOD::Iso::ptcone20)*1e-3;
+    double pt  = ph->pt()*1e-3;
+    double eta = ph->eta();
+    double mu  = eventInfo()->actualInteractionsPerCrossing();
+    
+    const xAOD::VertexContainer *vtxC = 0;
+    if (!event()->retrieve( vtxC, "PrimaryVertices").isSuccess()) {
+      Error("execute()", "Failed to retrieve vertex container. Exiting." );
+      return EL::StatusCode::FAILURE;
+    }
+    int npv = vtxC->size()-1;
+
+    //check wps
+    bool passWP[3] = { 0, 0, 0};
+    passWP[0] = ( (pt20/pt      < 0.040) && (tp20/(pt+100) < 0.015) );
+    passWP[1] = ( (pt20/pt      < 0.039) && (tp20/(pt+100) < 0.026) );
+    passWP[2] = ( (pt20/(pt+10) < 0.044) && (tp20/(pt+10)  < 0.046) );
+    
+    TString wptags[3] = {"_Cone20", "_Cone20L", "_Cone20L++"};
+    for( int i(0); i < 3; i++) {
+      TString tag = wptags[i];
+      histoStore()->fillTProfile(  "h_pt"+tag,  pt, passWP[i] );
+      histoStore()->fillTProfile( "h_eta"+tag, eta, passWP[i] );
+      histoStore()->fillTProfile( "h_var"+tag,  0 , passWP[i] );
+      histoStore()->fillTProfile(  "h_mu"+tag,  mu, passWP[i] );
+      histoStore()->fillTProfile( "h_npv"+tag, npv, passWP[i] );
+    }
+  }
+    
+
+  return EL::StatusCode::SUCCESS;
+}

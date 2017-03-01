@@ -1,0 +1,64 @@
+///////////////////////////////////////////////////////
+// Run like this:                                    //
+//    root -b -q 'RunHSG1HggAnalysis.cxx()'          //
+///////////////////////////////////////////////////////
+
+void RunHSG1HggAnalysis () {
+
+  // load the libraries for all packages
+  gROOT->Macro("$ROOTCOREDIR/scripts/load_packages.C");
+
+  // Set up the job for xAOD access:
+  xAOD::Init().ignore();
+  
+  // create a new sample handler to describe the data files we use
+  SH::SampleHandler sh;
+  
+  // scan for datasets in the given directory
+  // this works if you are on lxplus, otherwise you'd want to copy over files
+  // to your local machine and use a local path.  if you do so, make sure
+  // that you copy all subdirectories and point this to the directory
+  // containing all the files, not the subdirectories.
+
+
+  const char* inputFilePath = gSystem->ExpandPathName ("/afs/cern.ch/work/s/stmenary/private/PhD/1st_Year/Hgamma/HIGG1D1/WorkArea/run/xAODs/");
+  SH::DiskListLocal list (inputFilePath);
+  SH::scanDir (sh, list, "AOD.01512139._000010.pool.root.1"); // specifying one particular file for testing
+
+//  SH::scanDir( sh, "/afs/cern.ch/work/k/ksekhon/HiggsGammaGammaxAOD/HGamAnalysisFramework/Data/");
+
+  // set the name of the tree in our files
+  sh.setMetaString ("nc_tree", "CollectionTree");
+
+  // further sample handler configuration may go here
+
+  // print out the samples we found
+  sh.print ();
+  
+  // compose a string with the current time for the output director[y/ies]
+  TDatime now = TDatime();
+  TString dateAndTime(now.AsSQLString());
+
+  // add our algorithm to the job
+  HSG1HggAnalysis *alg = new HSG1HggAnalysis;
+    
+  // finally, let's define the job and add the alg to it
+  cout << "Will now add the alg to the job" << endl;
+  EL::Job job;
+  job.sampleHandler (sh);
+  job.algsAdd (alg);
+    
+  // put together the name of the output dir and submit the job using the driver
+  TString submitDir = TString("HSG1Hgg_")+dateAndTime;
+  submitDir.ReplaceAll(" ","_").ReplaceAll("-","").ReplaceAll(":","");
+  cout << "Will now submit the job: \"" << submitDir << "\"" << endl;
+  
+  // make the driver we want to use:
+  EL::DirectDriver driver; // run locally - there are others!
+  
+  // process the job using the driver
+  driver.submit (job, submitDir.Data());
+    
+  cout << "Done with job \"" << submitDir << "\"" << endl << endl;
+    
+}

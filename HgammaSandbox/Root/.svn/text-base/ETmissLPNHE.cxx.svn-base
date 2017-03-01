@@ -1,0 +1,852 @@
+#include "HgammaSandbox/ETmissLPNHE.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include <EventLoop/Worker.h>
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(ETmissLPNHE)
+
+
+
+ETmissLPNHE::ETmissLPNHE(const char *name)
+: HgammaAnalysis(name),
+  resol_map(),
+  ETscale_map(),
+  JVT_map()
+{
+}
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+ETmissLPNHE::~ETmissLPNHE()
+{
+
+
+}
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+EL::StatusCode ETmissLPNHE::createOutput()
+{
+  int nBins = 0;
+  double minValue = 0;
+  double maxValue = 0;
+
+
+  // General checks 
+
+  histoStore()->createTH1F("m_{yy}",60,100,160,";m_{#gamma#gamma}");
+  histoStore()->createTH1F("pT_{yy}",500,0,1000,";p^{#gamma#gamma}_T");
+  histoStore()->createTH1F("pT_{ylead}",500,0,1000,";p^{#gamma_{lead}}_T");
+  histoStore()->createTH1F("pT_{ysublead}",500,0,1000,";p^{#gamma_{sublead}}_T");
+  histoStore()->createTH1F("Njets",10,0,10,";Njets;Events");
+
+
+
+  // Distribution plots of ETmiss,Exmiss,Eymiss and sumET : Ref Terms, total distributions and contributions depending on jets in the event
+
+
+  for(TString alg : ETmiss_Algs){
+    histoStore()->createTH1F("sumET_"+alg,m_bins_sumET,m_min_sumET,m_max_sumET,";#sum E_{T}"+alg+"[GeV];Events");
+    for(TString comp : vector_components){
+      plotBinning(comp,nBins,minValue,maxValue);
+      for(TString RefTerm : MET_RefTerms){
+	histoStore()->createTH1F("ETmissDist_"+RefTerm+"_"+alg+"_"+comp,nBins,minValue,maxValue,";E^{"+comp+"}_{miss}[GeV];Events");
+	for(int Njets : jet_plots){
+	  if(Njets == 99)continue;
+	  histoStore()->createTH1F("ETmissDist_"+RefTerm+"_"+alg+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets",nBins,minValue,maxValue,";E^{"+comp+"}_{miss}[GeV];Events");
+	}
+	histoStore()->createTH1F("ETmissDist_"+RefTerm+"_"+alg+"_"+comp+"_>2_jets",nBins,minValue,maxValue,";E^{"+comp+"}_{miss}[GeV];Events");
+      }
+    }
+  }
+  
+  // Distributions dependence on JVT cuts
+
+  for(TString alg : ETmiss_Algs){
+    for(TString comp : vector_components){
+      plotBinning(comp,nBins,minValue,maxValue);
+      for(auto it : JVT_WP){
+	histoStore()->createTH1F("ETmissDist_JVT_"+TString::Format("%d",TMath::Nint(it*100))+"_"+alg+"_"+comp,nBins,minValue,maxValue,";E^{"+comp+"}_{miss,JVT>"+TString::Format("%f",it)+"}[GeV];Events");
+	if(it != 0.2 && !comp.Contains("T"))
+	  histoStore()->createTH1F("ETmissDist_Comparison_JVT_"+TString::Format("%d",TMath::Nint(it*100))+"_vs_02_"+alg+"_"+comp,nBins,minValue,maxValue,";E^{"+comp+"}_{miss,JVT>"+TString::Format("%f",it)+"} -E^{"+comp+"}_{miss,JVT>0.2}[GeV];Events");
+      }
+    }
+  }
+  for(TString alg : ETmiss_Algs){
+    for(TString comp : vector_components){
+      if(comp.Contains("T"))continue;
+      for(TString var : resol_plots){
+	if(var.Contains("sumET")){
+	  histoStore()->createTH1F("EnergySquare_"+alg+"_"+var+"_"+comp,m_bins_sumET,m_min_sumET,m_max_sumET,";#sum E_{T}"+alg+"[GeV];Events");
+	  histoStore()->createTH1F("Energy_"+alg+"_"+var+"_"+comp,m_bins_sumET,m_min_sumET,m_max_sumET,";#sum E_{T}"+alg+"[GeV];Events");
+	  histoStore()->createTH1F("Nevents_"+alg+"_"+var+"_"+comp,m_bins_sumET,m_min_sumET,m_max_sumET,";#sum E_{T}"+alg+"[GeV];Events");
+	}else{
+
+	  histoStore()->createTH1F("EnergySquare_"+alg+"_"+var+"_"+comp,60,0,60,";"+var+";RMS E^{"+comp+"}_{miss} [GeV]");
+	  histoStore()->createTH1F("Energy_"+alg+"_"+var+"_"+comp,60,0,60,";"+var+";RMS E^{"+comp+"}_{miss} [GeV]");
+	  histoStore()->createTH1F("Nevents_"+alg+"_"+var+"_"+comp,60,0,60,";"+var+";RMS E^{"+comp+"}_{miss} [GeV]");
+
+
+	}
+      }
+    }
+  }
+  // Resolution plots
+
+
+  for(TString alg : ETmiss_Algs){
+    for(TString comp : vector_components){
+      if(comp.Contains("T"))continue;
+      for(TString var : resol_plots){
+	if(var.Contains("sumET")) histoStore()->createTH1F("Resol_"+var+"_"+alg+"_"+comp,m_bins_sumET,m_min_sumET,m_max_sumET,";#sum E_{T};RMS E^{"+comp+"}_{miss} [GeV]");
+	else histoStore()->createTH1F("Resol_"+var+"_"+alg+"_"+comp,60,0,60,";"+var+";RMS E^{"+comp+"}_{miss} [GeV]");
+	for(int Njets : jet_plots){
+	  if(Njets == 99) continue;
+	  if(var.Contains("sumET")) histoStore()->createTH1F("Resol_"+var+"_"+alg+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets",m_bins_sumET,m_min_sumET,m_max_sumET,";#sum E_{T};RMS E^{"+comp+"}_{miss} [GeV]");
+	  else histoStore()->createTH1F("Resol_"+var+"_"+alg+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets",60,0,60,";"+var+";RMS E^{"+comp+"}_{miss} [GeV]");
+	}
+	if(var.Contains("sumET")) histoStore()->createTH1F("Resol_"+var+"_"+alg+"_"+comp+"_>2_jets",m_bins_sumET,m_min_sumET,m_max_sumET,";#sum E_{T};RMS E^{"+comp+"}_{miss} [GeV]");
+	else histoStore()->createTH1F("Resol_"+var+"_"+alg+"_"+comp+"_>2_jets",60,0,60,";"+var+";RMS E^{"+comp+"}_{miss} [GeV]");
+      }
+    }
+  }
+  
+
+  // Angular plots : plots with regard to the leading and subleading photons,
+  // the diphoton system, the leading jet and the diphoton+lead jet system.
+
+
+  for(TString alg : ETmiss_Algs){
+    for(TString key : angular_plots){
+      histoStore()->createTH1F(key+"_"+alg,40,0,TMath::Pi(),"; #Delta#phi");
+      for(int Njets : jet_plots){
+	if(Njets == 99) continue;
+	if(key.Contains("j_") && Njets == 0 ) continue;
+	histoStore()->createTH1F(key+"_"+alg+"_"+TString::Format("%d",Njets)+"_jets",40,0,TMath::Pi(),"; #Delta#phi");
+      }
+      histoStore()->createTH1F(key+"_"+alg+"_>2_jets",40,0,TMath::Pi(),"; #Delta#phi");
+    }
+  }
+
+  // ETmiss scale : 
+
+  for(TString alg : ETmiss_Algs){
+
+    histoStore()->createTH1F("ETmissOnDiphotonParallelAxis_"+alg,80,-250,250,"; E^{T}_{miss} #parallel p^{#gamma#gamma}_{T}");
+    histoStore()->createTH1F("ETmissOnDiphotonPerpendicularAxis_"+alg,80,-250,250,"; E^{T}_{miss} #perp p^{#gamma#gamma}_{T}");
+    histoStore()->createTH1F("ETmissScale_Parallel_"+alg,200,0,200,"; p^{#gamma#gamma}_{T};<E^{T}_{miss} #parallel A^{H}_{T}>");
+    histoStore()->createTH1F("ETmissScale_Perp_"+alg,200,0,200,"; p^{#gamma#gamma}_{T};<E^{T}_{miss} #perp A^{H}_{T}>");
+  }
+
+
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+void ETmissLPNHE::plotBinning(TString component,int& numberBins,double& Minimum,double& Maximum){
+
+  // Assign the binning and minimum and maximum of the plots. 
+
+  if(component.Capacity() == 0){
+    Error("plotBinning","No component passed to the method");
+  }
+    
+  if(component.Contains("T")){
+    numberBins=m_bins_ETmiss_Total;
+    Minimum=m_min_ETmiss_Total;
+    Maximum=m_max_ETmiss_Total;
+  }else if(component.Contains("x") || component.Contains("y") ){
+    numberBins=m_bins_ETmiss_xy;
+    Minimum=m_min_ETmiss_xy;
+    Maximum=m_max_ETmiss_xy;
+  }else{
+    Error("plotBinning","Not recognised MET component passed to the method");
+  }
+
+}
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+double ETmissLPNHE::getMETcomponent(TString component,xAOD::MissingET* met){
+
+  // Return the value of missing energy (transverse, in the x axis or the y axis)
+
+  if( met == nullptr ){
+    Error("getMETContainer","met points no MissingET variable.");
+    return 0.;
+  }
+
+  if(component.Contains("T"))return met->met()/HG::GeV;
+  if(component.Contains("x"))return met->mpx()/HG::GeV;
+  if(component.Contains("y"))return met->mpy()/HG::GeV;
+
+  return 0.;
+}
+
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+bool ETmissLPNHE::addMapElement(TString mapName,TString key){
+
+
+  if( (!mapName.Contains("Scale") && !mapName.Contains("Resol")) ){
+    Error("addMapElement()" , "Not recognized key."); 
+    return false;
+  }
+
+  std::vector<TString> plotsResol = { "Esquare" , "E" , "Nevents" };
+  std::vector<TString> plotsETScale = { "ETParallel" , "ETPerp" , "Nevents","ETSquareParallel","ETSquarePerp" };
+
+  TH1F* hist = nullptr;
+
+  std::vector<TH1F*> mapElement;
+
+  if(mapName.Contains("Scale")){
+    for(TString var : plotsETScale){	
+      hist = new TH1F(key+"_"+var, var ,80,-250,250);
+      mapElement.push_back(hist);
+    }
+    ETscale_map[key] = mapElement; 
+  }
+  if(mapName.Contains("Resol")) {
+    if(key.Contains("sumET")){
+      for(TString var : plotsResol){	
+	hist = new TH1F(key+"_"+var, var ,m_bins_sumET,m_min_sumET,m_max_sumET);
+	mapElement.push_back(hist);
+      }
+    }else{
+      for(TString var : plotsResol){	
+	hist = new TH1F(key+"_"+var, var ,60,0,60);
+	mapElement.push_back(hist);
+      }
+    }	
+    resol_map[key] = mapElement; 
+  }
+  return true;
+}
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool ETmissLPNHE::fillDistributionPlots(xAOD::MissingETContainer met,xAOD::JetContainer jets){
+
+
+  // Plots of ETmiss distributions and sumET. Inclusive and for different number of jets in the event.
+
+  if( met.empty() ) return false;
+
+  xAOD::MissingET* metRefTerm = 0 ;
+
+
+  for(TString alg : ETmiss_Algs){
+    for(TString RefTerm : MET_RefTerms){ 
+
+      if(RefTerm.Contains("Total")){ 
+	metRefTerm = met[alg.Data()];
+ 	histoStore()->fillTH1F("sumET_"+alg,metRefTerm->sumet()/HG::GeV);
+	if (!metRefTerm) {
+	  Error("execute()", "Failed to retrieve "+alg+" contribution from HGammaAnalysisFramework/ETmissHandler. Exiting." );
+	  return EL::StatusCode::SUCCESS;
+	}
+
+      }else{
+
+	metRefTerm = met[RefTerm.Data()];
+	if (!metRefTerm) {
+	  Error("execute()", "Failed to retrieve "+RefTerm+" contribution from HGammaAnalysisFramework/ETmissHandler. Exiting." );
+	  return EL::StatusCode::SUCCESS;
+	}
+	if(alg.Contains("CST") && RefTerm.Contains("PVSoftTrk"))continue;
+	if(alg.Contains("TST") && RefTerm.Contains("SoftClus"))continue;
+
+      }
+
+      for(TString comp : vector_components){
+	histoStore()->fillTH1F("ETmissDist_"+RefTerm+"_"+alg+"_"+comp, getMETcomponent(comp,metRefTerm),weightInitial());
+	for(int Njets : jet_plots){
+	  if( jets.size() == fabs(Njets) && Njets !=99){
+	    histoStore()->fillTH1F("ETmissDist_"+RefTerm+"_"+alg+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets", getMETcomponent(comp,metRefTerm),weightInitial());
+	  }
+	  if(Njets == 99 && jets.size() > 2 ){
+	    histoStore()->fillTH1F("ETmissDist_"+RefTerm+"_"+alg+"_"+comp+"_>2_jets", getMETcomponent(comp,metRefTerm),weightInitial());
+	  }
+	}
+      }
+    }
+   
+  }
+
+
+
+  return true;
+} 
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+bool ETmissLPNHE::fillJvtDependencePlots(xAOD::PhotonContainer photonContainer,xAOD::JetContainer jetContainer,xAOD::ElectronContainer electronContainer,xAOD::MuonContainer muonContainer){
+
+
+  // Plots for rebuilt MET by ETmissHandlers with different JVT values.
+
+  HG::ETmissHandlerLMMC15* metHand = 0;
+  HG::ETmissHandlerLMMC15* metHand_JVT02 = 0;
+
+  std::string type = "";
+
+  for(TString alg : ETmiss_Algs){
+    if(alg.Contains("TST")) type = "TST";
+    if(alg.Contains("CST")) type = "CST";
+
+
+    for(std::map<double,HG::ETmissHandlerLMMC15*>::iterator it = JVT_map.begin(); it != JVT_map.end(); ++it){
+      metHand = it->second;
+      metHand_JVT02 = JVT_map[0.2];
+      xAOD::MissingET met=metHand->ETmissRebuilder(photonContainer,jetContainer,electronContainer,muonContainer,type);
+      xAOD::MissingET MET_JVT02=metHand_JVT02->ETmissRebuilder(photonContainer,jetContainer,electronContainer,muonContainer,type);
+
+      for(TString comp : vector_components){
+
+	histoStore()->fillTH1F("ETmissDist_JVT_"+TString::Format("%d",TMath::Nint(it->first*100))+"_"+alg+"_"+comp, getMETcomponent(comp,&met),weightInitial());
+	if(comp.Contains("T")) continue;
+	if(it->first == 0.2)continue;
+	histoStore()->fillTH1F("ETmissDist_Comparison_JVT_"+TString::Format("%d",TMath::Nint(it->first*100))+"_vs_02"+"_"+alg+"_"+comp,(getMETcomponent(comp,&met)-getMETcomponent(comp,&MET_JVT02)),weightInitial());
+
+
+      }
+    }
+  }
+  return true;
+} 
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool ETmissLPNHE::fillAngularPlots(xAOD::MissingETContainer met,xAOD::PhotonContainer photons,xAOD::JetContainer jets){
+
+  // Fill the difference in Phi of MET with the leading photon, the diphoton system, the lead jet and the
+  // diphoton + lead jet system.
+
+  if( met.empty() ) return false;
+  if( photons.empty() ) return false;
+
+  TLorentzVector leadphotonFourMomentum = photons[0]->p4();
+  TLorentzVector subleadphotonFourMomentum = photons[1]->p4();
+  TLorentzVector diphotonFourMomentum = leadphotonFourMomentum+subleadphotonFourMomentum;
+
+  TLorentzVector etmiss;
+  TLorentzVector jetFourMomentum; 
+
+
+  double phi_to_plot=0;
+
+  for(TString alg : ETmiss_Algs){
+    if (!met[alg.Data()]) {
+      Error("execute()", "Failed to retrieve "+alg+"container from HGammaAnalysisFramework/ETmissHandler. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+
+
+    etmiss.SetPtEtaPhiM(met[alg.Data()]->met(),0,met[alg.Data()]->phi(),0);
+    for(TString key : angular_plots){
+
+      if( jets.size() == 0 && key.Contains("j_") )continue;
+      if( key.Contains("_glead_"))phi_to_plot = leadphotonFourMomentum.DeltaPhi(etmiss);
+      if( key.Contains("_gsublead_"))phi_to_plot = subleadphotonFourMomentum.DeltaPhi(etmiss);
+      if( key.Contains("_gg_"))	phi_to_plot = diphotonFourMomentum.DeltaPhi(etmiss);
+      if( jets.size() != 0 ){ 
+	jetFourMomentum = jets[0]->p4();
+	if( key.Contains("_j_") )phi_to_plot = jetFourMomentum.DeltaPhi(etmiss);
+	if( key.Contains("_ggj_") )phi_to_plot = (jetFourMomentum+diphotonFourMomentum).DeltaPhi(etmiss);
+      }
+      histoStore()->fillTH1F(key+"_"+alg,fabs(phi_to_plot),weightInitial());
+      for(int Njets : jet_plots){
+
+	if( jets.size() == fabs(Njets)&& Njets !=99){
+	  histoStore()->fillTH1F(key+"_"+alg+"_"+TString::Format("%d",Njets)+"_jets",fabs(phi_to_plot),weightInitial());
+	}
+
+	if(Njets == 99 && jets.size() > 2 ){
+	  histoStore()->fillTH1F(key+"_"+alg+"_>2_jets",fabs(phi_to_plot),weightInitial());
+	}
+
+      }
+    }
+  }
+
+
+  return true;
+} 
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+bool ETmissLPNHE::storeResolVar(xAOD::MissingETContainer met,xAOD::JetContainer jets)
+{
+
+  // Store the values of Emiss**2 , Emiss and Nevents for each value of NPV, <mu> and sumET
+  // Will be used in fillResolutionPlots() to estimate the RMS of Emiss.
+
+  int numberPV = eventHandler()->numberOfPrimaryVertices();
+
+  double mu = eventHandler()->mu();
+  double sumET = 0;
+
+  xAOD::MissingET* met_Term = 0 ;
+  std::vector<TH1F*>resolHistVector;
+
+
+  int value = 0 ;
+
+
+  for(TString alg : ETmiss_Algs){
+    met_Term = met[alg.Data()];
+    if (!met_Term) {
+      Error("execute()", "Failed to retrieve "+alg+"container from HGammaAnalysisFramework/ETmissHandler. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+    sumET = met["TST"]->sumet()/HG::GeV; 
+
+    for(TString plot : resol_plots){
+     
+      for(TString comp : vector_components){
+	if(comp.Contains("T")) continue;
+	if(plot.Contains("sumET")) value = TMath::Nint(sumET);
+	if(plot.Contains("NPV")) value = numberPV;
+	if(plot.Contains("mu")) value = TMath::Nint(mu);
+	resolHistVector.clear();
+
+	if(resol_map[alg+"_"+plot+"_"+comp].empty()){
+
+	  if( !addMapElement("Resol",alg+"_"+plot+"_"+comp) ) {
+	    Error("initialize()","Couldn't initialize correctly the resolution map. Exiting.");
+	    return false;
+	  }
+
+	}
+
+	resolHistVector = resol_map[alg+"_"+plot+"_"+comp];
+	resolHistVector[0]->Fill(value,TMath::Power(getMETcomponent(comp,met_Term),2)*weightInitial());
+	resolHistVector[1]->Fill(value,getMETcomponent(comp,met_Term)*weightInitial());
+	resolHistVector[2]->Fill(value,weightInitial());
+	
+
+	histoStore()->fillTH1F("EnergySquare_"+alg+"_"+plot+"_"+comp,value,TMath::Power(getMETcomponent(comp,met_Term),2)*weightInitial());
+	histoStore()->fillTH1F("Energy_"+alg+"_"+plot+"_"+comp,value,getMETcomponent(comp,met_Term)*weightInitial());
+	histoStore()->fillTH1F("Nevents_"+alg+"_"+plot+"_"+comp,value,weightInitial());
+
+      	for(int Njets : jet_plots){
+	 resolHistVector.clear();
+
+      	  if( jets.size() == fabs(Njets)&& Njets !=99){
+      	    if(resol_map[alg+"_"+plot+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets"].empty()){
+
+	      if( !addMapElement("Resol",alg+"_"+plot+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets") ) {
+		Error("initialize()","Couldn't initialize correctly the resolution map. Exiting.");
+		return false;
+	      }
+
+      	    }
+
+      	   resolHistVector = resol_map[alg+"_"+plot+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets"];
+	   resolHistVector[0]->Fill(value,TMath::Power(getMETcomponent(comp,met_Term),2)*weightInitial());
+	   resolHistVector[1]->Fill(value,getMETcomponent(comp,met_Term)*weightInitial());
+	   resolHistVector[2]->Fill(value,weightInitial());
+
+      	  }
+      	  if( jets.size() >2 && Njets ==99){
+
+      	    if(resol_map[alg+"_"+plot+"_"+comp+"_>2_jets"].empty()){	
+
+
+	      if( !addMapElement("Resol",alg+"_"+plot+"_"+comp+"_>2_jets") ) {
+		Error("initialize()","Couldn't initialize correctly the resolution map. Exiting.");
+		return false;
+	      }   
+      	    }
+
+      	   resolHistVector = resol_map[alg+"_"+plot+"_"+comp+"_>2_jets"];
+	   resolHistVector[0]->Fill(value,TMath::Power(getMETcomponent(comp,met_Term),2)*weightInitial());
+	   resolHistVector[1]->Fill(value,getMETcomponent(comp,met_Term)*weightInitial());
+	   resolHistVector[2]->Fill(value,weightInitial());
+
+
+      	  }
+      	}
+      }
+    }
+  }
+
+
+  return true;
+}
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool ETmissLPNHE::fillResolutionPlots(){
+
+  // Fill the resolution plots with the RMS of the ETmiss for the different NPV, <mu> and sumET.
+  // sigmaRMS = sqrt( (E**2/Nevents) -  (E/Nevents)**2 ) 
+  // Errors are estimated propagating (E**2/Nevents) -  (E/Nevents)**2 error . 
+
+  if(resol_map.empty() ){
+    Error("fillResolutionPlots()","Input resolution map is empty. Couldn't fill resolution plots.Exiting");
+    return false;
+  }
+  
+  std::vector<TH1F*>resolHistVector;
+
+  double RMS_value=0;
+  double RMS_error=0;
+  double bin_value = 0 ;
+
+  for(TString alg : ETmiss_Algs){
+    for(TString plot : resol_plots){
+      for(TString comp : vector_components){
+	if(comp.Contains("T"))continue; // Resolution plots are only done for x and y directions
+	resolHistVector=resol_map[alg+"_"+plot+"_"+comp];
+	resolHistVector[0]->Divide(resolHistVector[2]);
+	resolHistVector[1]->Divide(resolHistVector[2]);
+	resolHistVector[1]->Multiply(resolHistVector[1]);
+	resolHistVector[0]->Add(resolHistVector[1],-1);
+	for(int i = 1 ; i <=resolHistVector[0]->GetNbinsX(); ++i){
+
+	  bin_value = resolHistVector[0]->GetBinCenter(i);
+	  if(resolHistVector[0]->GetBinContent(i) > 0 )RMS_value = TMath::Sqrt(resolHistVector[0]->GetBinContent(i) );
+	  else continue;
+	  RMS_error = RMS_value/TMath::Sqrt(2*resolHistVector[2]->GetBinContent(i));
+	  histoStore()->fillTH1F("Resol_"+plot+"_"+alg+"_"+comp,bin_value,RMS_value);
+	  histoStore()->getTH1F("Resol_"+plot+"_"+alg+"_"+comp)->SetBinError((( histoStore()->getTH1F("Resol_"+plot+"_"+alg+"_"+comp)->GetXaxis())->FindBin(bin_value)),RMS_error); 
+
+	}
+
+	// Plots for different number of jets in the event 
+
+	for(int Njets : jet_plots){
+	 resolHistVector.clear();
+	  if( Njets !=99){
+
+	   resolHistVector=resol_map[alg+"_"+plot+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets"];
+	   resolHistVector[0]->Divide(resolHistVector[2]);
+	   resolHistVector[1]->Divide(resolHistVector[2]);
+	   resolHistVector[1]->Multiply(resolHistVector[1]);
+	   resolHistVector[0]->Add(resolHistVector[1],-1);
+
+	    for(int i = 1 ; i <=resolHistVector[0]->GetNbinsX(); ++i){
+	      bin_value = resolHistVector[0]->GetBinCenter(i);
+	      if(resolHistVector[0]->GetBinContent(i) > 0 )RMS_value = TMath::Sqrt(resolHistVector[0]->GetBinContent(i) );
+	      else continue;
+	      RMS_error = RMS_value/TMath::Sqrt(2*resolHistVector[2]->GetBinContent(i));
+	    
+	      histoStore()->fillTH1F("Resol_"+plot+"_"+alg+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets",bin_value,RMS_value);
+	      histoStore()->getTH1F("Resol_"+plot+"_"+alg+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets")->SetBinError((( histoStore()->getTH1F("Resol_"+plot+"_"+alg+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets")->GetXaxis())->FindBin(bin_value)),RMS_error); 
+	    }
+
+	  }else{
+
+	   resolHistVector = resol_map[alg+"_"+plot+"_"+comp+"_>2_jets"];
+	   resolHistVector[0]->Divide(resolHistVector[2]);
+	   resolHistVector[1]->Divide(resolHistVector[2]);
+	   resolHistVector[1]->Multiply(resolHistVector[1]);
+	   resolHistVector[0]->Add(resolHistVector[1],-1);
+	    for(int i = 1 ; i <=resolHistVector[0]->GetNbinsX(); ++i){
+	      bin_value = resolHistVector[0]->GetBinCenter(i);
+	      if(resolHistVector[0]->GetBinContent(i) > 0 )RMS_value = TMath::Sqrt(resolHistVector[0]->GetBinContent(i) );
+	      else continue;
+	      RMS_error = RMS_value/TMath::Sqrt(2*resolHistVector[2]->GetBinContent(i));
+	    
+	      histoStore()->fillTH1F("Resol_"+plot+"_"+alg+"_"+comp+"_>2_jets",bin_value,RMS_value);
+	      histoStore()->getTH1F("Resol_"+plot+"_"+alg+"_"+comp+"_>2_jets")->SetBinError((( histoStore()->getTH1F("Resol_"+plot+"_"+alg+"_"+comp+"_>2_jets")->GetXaxis())->FindBin(bin_value)),RMS_error); 
+	    }
+	  }
+	}
+      }
+    }
+  }
+  return true;
+} 
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool ETmissLPNHE::storeETmissScale(xAOD::MissingETContainer met,xAOD::PhotonContainer photonContainer){
+
+
+  // Create plots on the ETmiss magnitude in the parallel and perpendicular axis to the diphoton direction.
+  // Store these magnitude values to study in fillETmissScale() their mean value depending on pTyy.
+
+  if( met.empty() ) return false;
+  if( photonContainer.empty() ) return false;
+
+  TLorentzVector DiphotonFourVector = photonContainer[0]->p4()+photonContainer[1]->p4();
+
+  TVector2 diphoton_parallel_axis(DiphotonFourVector.Px()/DiphotonFourVector.Pt(),DiphotonFourVector.Py()/DiphotonFourVector.Pt());
+  TVector2 diphoton_perpendicular_axis(DiphotonFourVector.Py()/(DiphotonFourVector.Pt()),(-1)*DiphotonFourVector.Px()/(DiphotonFourVector.Pt()));
+
+  xAOD::MissingET* met_Term = 0 ;
+  std::vector<TH1F*> etmissScaleHistVector;
+  for(TString alg : ETmiss_Algs){
+    met_Term = met[alg.Data()];
+    if (!met_Term) {
+      Error("execute()", "Failed to retrieve "+alg+"container from HGammaAnalysisFramework/ETmissHandler. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+
+    TVector2 etmissXY(met_Term->mpx()/HG::GeV,met_Term->mpy()/HG::GeV);
+    etmissScaleHistVector=ETscale_map[alg];
+
+    histoStore()->fillTH1F("ETmissOnDiphotonParallelAxis_"+alg,etmissXY*diphoton_parallel_axis,weightInitial());
+    histoStore()->fillTH1F("ETmissOnDiphotonPerpendicularAxis_"+alg,etmissXY*diphoton_perpendicular_axis,weightInitial());
+    etmissScaleHistVector[0]->Fill(DiphotonFourVector.Pt()/HG::GeV,etmissXY*diphoton_parallel_axis*weightInitial());
+    etmissScaleHistVector[1]->Fill(DiphotonFourVector.Pt()/HG::GeV,etmissXY*diphoton_perpendicular_axis*weightInitial());
+    etmissScaleHistVector[2]->Fill(DiphotonFourVector.Pt()/HG::GeV,weightInitial());
+    etmissScaleHistVector[3]->Fill(DiphotonFourVector.Pt()/HG::GeV,TMath::Power(etmissXY*diphoton_parallel_axis,2));
+    etmissScaleHistVector[4]->Fill(DiphotonFourVector.Pt()/HG::GeV,TMath::Power(etmissXY*diphoton_perpendicular_axis,2));
+  }
+ 
+
+return true;
+} 
+
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool ETmissLPNHE::fillETmissScalePlots(){
+
+  // Plot the ETmiss mean magnitude in the parallel and perpendicular axis to diphoton axis.
+
+  if( ETscale_map.empty() ) return false;
+
+  std::vector<TH1F*> etmissScaleHistVector;
+  double bin_value;
+
+  for(TString alg : ETmiss_Algs){
+    etmissScaleHistVector=ETscale_map[alg];
+    etmissScaleHistVector[0]->Divide(etmissScaleHistVector[2]);
+    etmissScaleHistVector[1]->Divide(etmissScaleHistVector[2]);
+
+
+    for(int i = 1 ; i <= etmissScaleHistVector[0]->GetNbinsX(); ++i){
+      bin_value = etmissScaleHistVector[0]->GetBinCenter(i);
+      histoStore()->fillTH1F("ETmissScale_Parallel_"+alg,bin_value,etmissScaleHistVector[0]->GetBinContent(i));
+    }
+    for(int i = 1 ; i <= etmissScaleHistVector[1]->GetNbinsX(); ++i){
+      bin_value = etmissScaleHistVector[1]->GetBinCenter(i);
+      histoStore()->fillTH1F("ETmissScale_Perp_"+alg,bin_value,etmissScaleHistVector[1]->GetBinContent(i));
+    }
+
+
+    etmissScaleHistVector[0]->Multiply(etmissScaleHistVector[0]);
+    etmissScaleHistVector[1]->Multiply(etmissScaleHistVector[1]);
+
+
+    etmissScaleHistVector[3]->Divide(etmissScaleHistVector[2]);
+    etmissScaleHistVector[4]->Divide(etmissScaleHistVector[2]);
+    etmissScaleHistVector[3]->Add(etmissScaleHistVector[0],-1);
+    etmissScaleHistVector[4]->Add(etmissScaleHistVector[1],-1);
+    
+
+    for(int i = 1 ; i <= etmissScaleHistVector[0]->GetNbinsX(); ++i){
+      bin_value = etmissScaleHistVector[0]->GetBinCenter(i);
+      histoStore()->getTH1F("ETmissScale_Parallel_"+alg)->SetBinError((histoStore()->getTH1F("ETmissScale_Parallel_"+alg)->GetXaxis())->FindBin(bin_value),TMath::Sqrt(etmissScaleHistVector[3]->GetBinContent(i))/TMath::Sqrt(etmissScaleHistVector[2]->GetBinContent(i)));
+    }
+    for(int i = 1 ; i <= etmissScaleHistVector[1]->GetNbinsX(); ++i){
+      bin_value = etmissScaleHistVector[1]->GetBinCenter(i);
+      histoStore()->getTH1F("ETmissScale_Perp_"+alg)->SetBinError((histoStore()->getTH1F("ETmissScale_Perp_"+alg)->GetXaxis())->FindBin(bin_value),TMath::Sqrt(etmissScaleHistVector[4]->GetBinContent(i))/TMath::Sqrt(etmissScaleHistVector[2]->GetBinContent(i)) );
+    }
+
+  }
+
+
+  return true;
+} 
+
+
+//-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+EL::StatusCode ETmissLPNHE::initialize()
+{
+  HgammaAnalysis::initialize();
+
+  bool fail = false;
+
+  EL::StatusCode checkStatusCode;
+  
+  // Initialize ETmissHandlers with different JVT cuts.
+
+  for(auto jvtCut : JVT_WP){
+
+    m_ETmissHandler_JVT = new HG::ETmissHandlerLMMC15("m_ETmissHandler_"+TString::Format("%d",TMath::Nint(100*jvtCut)),jvtCut);
+    checkStatusCode =  m_ETmissHandler_JVT->initialize(*config(), event());
+    if ( checkStatusCode != EL::StatusCode::SUCCESS) {
+      std::cout << "ETmiss Handlers for JVT cut at :" << jvtCut << " initialization failed!" << std::endl;
+      return StatusCode::FAILURE;
+    }else{
+      std::cout << "ETmiss Handlers for JVT cut at :" << jvtCut << " initialization succeeded" << std::endl;
+    }
+    JVT_map[jvtCut]=m_ETmissHandler_JVT;
+  }
+  fail = JVT_map.empty();
+  if ( fail ) {
+    std::cout << "JVT Map initialialization failed!" << std::endl;
+    return StatusCode::FAILURE;
+  }else{
+    std::cout << "JVT Map  initialization succeeded" << std::endl;
+  }
+
+
+  // Initialize map to store histograms used to reconstruct resolution.
+
+
+  if( m_bins_sumET == 0 ){
+    Error("initialize()", "Must initialize the bins of the sumET plots to a positive non-zero value. Exiting" );
+    return EL::StatusCode::FAILURE;
+  }
+  for(TString alg : ETmiss_Algs){
+    for(TString plot : resol_plots){
+      for(TString comp : vector_components){
+	if(comp.Contains("T")) continue;
+	if( !addMapElement("Resol",alg+"_"+plot+"_"+comp) ) {
+	  Error("initialize()","Couldn't initialize correctly the resolution map. Exiting.");
+	  return EL::StatusCode::FAILURE;
+	}
+	for(int Njets : jet_plots){
+	  if( Njets !=99 ){
+	    if( !addMapElement("Resol",alg+"_"+plot+"_"+comp+"_"+TString::Format("%d",Njets)+"_jets") ) {
+	      Error("initialize()","Couldn't initialize correctly the resolution map. Exiting.");
+	      return EL::StatusCode::FAILURE;
+	    }
+	  }else{
+	    if( !addMapElement("Resol",alg+"_"+plot+"_"+comp+"_>2_jets") ) {
+	      Error("initialize()","Couldn't initialize correctly the resolution map. Exiting.");
+	      return EL::StatusCode::FAILURE;
+	    }
+	  }
+	}
+      }
+    }
+  }
+
+
+  fail = resol_map.empty();
+  if ( fail) {
+    std::cout << "Resolution Map initialialization failed!" << std::endl;
+    return StatusCode::FAILURE;
+  }else{
+    std::cout << "Resolution Map  initialization succeeded" << std::endl;
+  }
+
+  // Initialize map with histograms used to reconstruct ETmiss magnitude on
+  // parallel and perpendicular axes to diphoton pT.
+
+  for(TString alg : ETmiss_Algs){
+    if( !addMapElement("ETmissScale",alg) ) {
+      Error("initialize()","Couldn't initialize correctly the resolution map. Exiting.");
+      return EL::StatusCode::FAILURE;
+    }
+  }
+
+
+  fail= ETscale_map.empty();
+  if ( fail) {
+    std::cout << "ETmiss Scale Map initialialization failed!" << std::endl;
+    return StatusCode::FAILURE;
+  }else{
+    std::cout << "ETmiss Scale Map  initialization succeeded" << std::endl;
+  }
+
+  
+  return EL::StatusCode::SUCCESS;
+}
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+EL::StatusCode ETmissLPNHE::execute()
+{
+
+  HgammaAnalysis::execute();
+
+  eventHandler()->pass();
+  if( ! passJetEventCleaning() ) return EL::StatusCode::SUCCESS;
+
+  xAOD::ElectronContainer ElectronContainer=electronHandler()->getCorrectedContainer();
+  xAOD::PhotonContainer PhotonContainer=photonHandler()->getCorrectedContainer();
+  xAOD::MuonContainer MuonContainer=muonHandler()->getCorrectedContainer();
+  xAOD::JetContainer Jets=jetHandler()->getCorrectedContainer();
+
+  xAOD::ElectronContainer Electrons=electronHandler()->applySelection(ElectronContainer);
+  xAOD::PhotonContainer Photons=photonHandler()->applySelection(PhotonContainer);
+  xAOD::MuonContainer Muons=muonHandler()->applySelection(MuonContainer);
+
+  if(Photons.size()<2) return EL::StatusCode::SUCCESS;
+  TLorentzVector h = Photons[0]->p4() + Photons[1]->p4();
+  if(h.M()/HG::GeV < 105. || h.M()/HG::GeV > 160. )return EL::StatusCode::SUCCESS;
+
+
+
+  // Reject events with the hardest PV not matching the selected one.
+  // The goal is to keep events with soft-terms reconstructed w.r.t the diphoton selected PV.
+
+  if( eventHandler()->selectedVertexZ() > -999 && fabs(eventHandler()->hardestVertexZ() - eventHandler()->selectedVertexZ() ) > 0.3 ) return StatusCode::SUCCESS; 
+  
+  xAOD::MissingETContainer MET=etmissHandler()->getCorrectedContainer(&Photons,&Jets,&Electrons,&Muons);
+
+  // Choose analysis jet selection and remove overlaps. Do it after MET recalculation.
+ 
+  xAOD::JetContainer selectedJets = jetHandler()->applySelection(Jets);
+  overlapHandler()->removeOverlap(Photons,selectedJets,Electrons, Muons);
+
+
+  // // Apply H -> gammagamma basic selection
+
+  if( ! pass(&Photons,&Electrons,&Muons,&selectedJets) ) return EL::StatusCode::SUCCESS;
+
+
+
+  histoStore()->fillTH1F("m_{yy}",h.M()/HG::GeV);
+  histoStore()->fillTH1F("pT_{yy}",h.Pt()/HG::GeV);
+  histoStore()->fillTH1F("pT_{ylead}",Photons[0]->pt()/HG::GeV);
+  histoStore()->fillTH1F("pT_{ysublead}",Photons[1]->pt()/HG::GeV);
+  histoStore()->fillTH1F("Njets",selectedJets.size());
+
+
+
+  // Call functions to store MET in plots.
+
+  if( !fillDistributionPlots(MET,selectedJets) ){
+    Error("execute()","Problems filling the MET distribution plots. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+  if( !fillAngularPlots(MET,Photons,selectedJets) ){
+    Error("execute()","Problems filling the #gamma#gamma + MET angular plots. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+  if( !fillJvtDependencePlots(Photons,Jets,Electrons,Muons) ){
+    Error("execute()","Problems filling the Jvt dependence plots. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+  if( !storeResolVar(MET,selectedJets) ){
+    Error("execute()","Problems storing variables for resolution calculation. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+  if( !storeETmissScale(MET,Photons) ){
+    Error("execute()","Problems storing variables for ETmiss magnitude calculation. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+
+
+  return EL::StatusCode::SUCCESS;
+}
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+EL::StatusCode ETmissLPNHE::finalize(){
+
+  if( !fillResolutionPlots() ){
+    Error("execute()","Problems filling the resolution plots. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+
+  if( !fillETmissScalePlots() ){
+    Error("execute()","Problems filling the ETmiss scale plots. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+
+
+  HgammaAnalysis::finalize();
+  return EL::StatusCode::SUCCESS;
+}

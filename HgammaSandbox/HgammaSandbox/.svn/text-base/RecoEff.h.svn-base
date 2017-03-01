@@ -1,0 +1,27 @@
+#ifndef HgammaSandbox_RecoEff_H
+#define HgammaSandbox_RecoEff_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+class RecoEff : public HgammaAnalysis
+{
+public:
+  RecoEff() { }
+  RecoEff(const char *name) : HgammaAnalysis(name) { }
+  virtual ~RecoEff() { }
+  
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute ();
+
+#ifndef __CINT__
+  // helper method to fill eff histos
+  void fillEffHistos(const xAOD::TruthParticle *t_gam, bool match, TString recoType);
+  bool isCentral(const xAOD::TruthParticle *t_gam);
+  bool isCrack(const xAOD::TruthParticle *t_gam);
+  bool isFwd(const xAOD::TruthParticle *t_gam);
+#endif
+  
+  ClassDef(RecoEff, 1);
+};
+
+#endif // HgammaSandbox_RecoEff_H

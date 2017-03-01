@@ -1,0 +1,175 @@
+#ifndef HgammaSandbox_HyyMETwits_H
+#define HgammaSandbox_HyyMETwits_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+#include "HgammaSandbox/ETmissHandlerLM.h"
+#include "METUtilities/METRebuilder.h"
+
+#include "HgammaSandbox/ETmissHandlerLMMC15.h"
+#include "METUtilities/METMaker.h"
+
+// Systematics header
+
+#include "PATInterfaces/SystematicRegistry.h"
+
+// Forward declarations
+
+class GoodRunsListSelectionTool;
+class AsgElectronIsEMSelector;
+class AsgPhotonIsEMSelector;
+class AsgFudgeMCTool;
+namespace CP {
+  class EgammaCalibrationAndSmearingTool;
+  class IsolationCorrectionTool;
+};
+
+namespace Trig {
+    class TrigDecisionTool;
+};
+namespace TrigConf {
+    class xAODConfigTool;
+    class ITrigConfigTool;
+};
+
+class HyyMETwits : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+
+  #ifndef __CINT__
+  HG::ETmissHandlerLM *m_eTmissHandlerLM; //!
+  #endif // __CINT__
+    
+  inline virtual HG::ETmissHandlerLM*    eTmissHandlerLM()    { return m_eTmissHandlerLM; }
+
+    //#ifndef __CINT__
+  HG::ETmissHandlerLMMC15 *m_eTmissHandlerLMMC15; //!
+  //#endif // __CINT__
+  
+  inline virtual HG::ETmissHandlerLMMC15*    eTmissHandlerLMMC15()    { return m_eTmissHandlerLMMC15; }
+ 
+    
+  double MET_RefFinal_CST_Ex=0.;
+  double MET_RefFinal_CST_Ey=0.;
+  double MET_RefFinal_CST=0.;
+  double MET_RefFinal_CST_sum=0.;
+    
+  double MET_RefFinal_TST_Ex=0.;
+  double MET_RefFinal_TST_Ey=0.;
+  double MET_RefFinal_TST=0.;
+  double MET_RefFinal_TST_sum=0.;
+    
+    
+  double MET_RefFinal_TST2_Ex=0.;
+  double MET_RefFinal_TST2_Ey=0.;
+  double MET_RefFinal_TST2=0.;
+    
+  
+  const std::vector<TString> m_cutLabels = {"All events","good events","di-photon selection","YYMasswin","Pt1/myy > 0.35","Pt2/myy > 0.25","Pt_yy > 30", "MET_CST > 30"};
+  
+  const std::vector<TString> m_mecutLabels = {"Total muons","Selected muons","Total electrons","Selected electrons"};
+  
+  
+  
+  // Event Cuts
+  enum cuts {ALLEVTS= 0,GOODEVT=1,DIPHT=2,MASSWIN=3,Y1PT=4,Y2PT=5,YY30=6, METCST=7};
+  //Electron and Muon Cuts
+  enum MECount {ALLMUN=0,MUN2=1,ALLELE=2,ELE2=3};
+  
+  // Met categories
+  enum MetLevelCategory {InterMet=0,HighMet=1};
+  std::vector<HyyMETwits::MetLevelCategory> levelCategories;
+  TString getLevelCategoryNAme(HyyMETwits::MetLevelCategory);
+  
+  #ifndef __CINT__
+    AsgPhotonIsEMSelector* photonID_tight_tool_SS; //!
+
+    AsgFudgeMCTool* m_fudgeMCTool; //!
+    CP::IsolationCorrectionTool* isoCorr_tool; //!
+
+    // For triggers
+
+    TrigConf::xAODConfigTool* configTool; //!
+    Trig::TrigDecisionTool* trigDecTool; //!
+    ToolHandle<TrigConf::ITrigConfigTool>* configHandle; //!
+
+  #endif // not __CINT__
+  
+  
+  // configurable tools
+ 
+  bool do_systematics;
+
+  // variables that don't get filled at submission time should be
+  // protected from being send from the submission node to the worker
+  // node (done by the //!)
+private:
+  // Tree *myTree; //!
+  // TH1 *myHist; //!
+    
+    
+  // di-photon mass selection
+    
+  float m_myylow;
+  float m_myyhigh;
+
+  // is MonteCarlo
+    
+  bool is_mc; //!
+  
+  std::vector<CP::SystematicSet> sysList; //!  
+    
+  met::METRebuilder  *metutil=0;
+  met::METMaker *m_metmaker=0;
+  
+  void fillEventCutFlow(TString Prefix, int binNum);
+  
+  void fillMuonElectronCutFlow(TString Prefix, int binNum);
+  
+  // sample to run over 
+  bool ggF;
+  bool ttH;
+  bool VBF;
+  bool WH;
+  
+  
+  
+  // sample prefix
+  TString m_sample;
+  TString SamplePrefix;
+  
+  // Met Levels
+  bool highMET;
+  bool interMET;
+  
+  
+  // plot electron and muon info
+  bool E_MInfo;
+  //Template to overload plot function 
+  
+  //Function to fill and save Photon info
+  void fill_savePhotonHistos(TString histPrefix,TLorentzVector y1, TLorentzVector y2);
+  
+  
+public:
+  // this is a standard constructor
+  HyyMETwits() { }
+  HyyMETwits(const char *name);
+  virtual ~HyyMETwits();
+
+  // these are the functions inherited from HgammaAnalysis
+  
+  virtual EL::StatusCode initialize();
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(HyyMETwits, 1);
+};
+
+#endif // HgammaSandbox_HyyMETwits_H

@@ -1,0 +1,18 @@
+#include "HgammaSandbox/SignalModelSystematics.h"
+#include "HGamAnalysisFramework/RunUtils.h"
+
+int main(int argc, char *argv[])
+{
+  printf("\n====\n  runSignalModelSystematics\n====\n");
+
+  // Set up the job for xAOD access
+  xAOD::Init().ignore();
+
+  // Create our algorithm
+  SignalModelSystematics *alg = new SignalModelSystematics("SignalModelSystematics");
+
+  // Use helper to start the job
+  HG::runJob(alg, argc, argv);
+
+  return 0;
+}

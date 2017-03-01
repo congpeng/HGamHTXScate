@@ -1,0 +1,32 @@
+########"
+#
+# Configuration file for /afs/cern.ch/work/l/lmarch/HGam/HgammaSandbox/ETmissExample analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        ETmissHandlerExample_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HgammaConfig.cfg
+
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+

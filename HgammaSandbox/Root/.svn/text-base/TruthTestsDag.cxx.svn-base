@@ -1,0 +1,61 @@
+#include "HgammaSandbox/TruthTestsDag.h"
+#include "HGamAnalysisFramework/TruthUtils.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "AthContainers/ConstDataVector.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(TruthTestsDag)
+
+EL::StatusCode TruthTestsDag::createOutput()
+{
+  //histoStore()->createTH1F("m_yy", 60, 110, 140);
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+EL::StatusCode TruthTestsDag::execute()
+{
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+  // 1. Grab the truth particles
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticle" ).isFailure() )
+    HG::fatal("Cannot access TruthParticle");
+
+  const xAOD::JetContainer *truthJets = 0;
+  if (event()->retrieve(truthJets,"AntiKt4TruthJets").isFailure() )
+    HG::fatal("Cannot access AntiKt4TruthJets");
+
+  
+  // 1.a Find the truth photons
+  std::vector<const xAOD::TruthParticle*> truthPhotons;
+  for ( const xAOD::TruthParticle *ptcl : *truthPtcls )
+    if ( HG::isGoodTruthPhoton(ptcl) )
+      truthPhotons.push_back(ptcl);
+
+  HG::TruthParticleStruct truth = HG::identifyTruthParticles(truthPtcls,truthJets);
+  if (truth.Bhadrons.size()||truth.photons.size()!=2)
+    HG::printTruthParticles(truth);
+  
+  /*
+  ConstDataVector<xAOD::TruthParticleContainer> ys = truth.photons;
+  if (ys.size()>3) {
+    const xAOD::TruthParticle *par = ys.back()->parent();
+    HG::printTruthPtcl(ys.back(),par?Form("Parent ID: %d",par->pdgId()):"No parent");
+    // for ( const xAOD::TruthParticle *y : truth.photons ) HG::printTruthPtcl(y); // WORKS!
+    // for ( const auto y : truth.photons ) HG::printTruthPtcl(y); // WORKS!
+  }
+  */
+  /*
+  if (truth.photons.size()>3) {
+    for ( const xAOD::TruthParticle *y : truth.photons )
+      HG::printTruthParticles(y);
+    HG::fatal("stop");
+  }
+  ConstDataVector<xAOD::TruthParticleContainer> ys;
+  */
+  return EL::StatusCode::SUCCESS;
+}

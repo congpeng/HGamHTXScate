@@ -1,0 +1,25 @@
+########"
+#
+# Configuration file for HGamCutflowAndMxAOD
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        HGamCutflowAndMxAOD_DATE
+SampleName:       sample
+
+###################################
+# Input specific settings DC14 vs MC15
+# - change depending on DC14 or MC15 input
+
+BaseConfig:                HGamAnalysisFramework/HGamDC14.config
+TruthEvent.ContainerName:  TruthEvent
+
+##################################
+# What to save in the MxAOD
+
+
+#################

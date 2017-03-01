@@ -1,0 +1,72 @@
+########"
+#
+# Configuration file for /Users/shliao/sandbox/HgammaSandbox/HyyMETwits analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        HyyMETwits_DATE
+#SampleName:       sample
+SampleName:        output
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HGamMC15.config
+
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+HyyMET2.myyWindow.low:                           105.0
+
+HyyMET2.myyWindow.high:                          160.0
+
+PhotonHandler.Selection.PID:                   Tight Loose
+
+##################################
+# Electron calibration & smearing settings
+
+ElectronHandler.Selection.PID:                      Medium
+ElectronHandler.Selection.ConfigDir:                ElectronPhotonSelectorTools/of$
+ElectronHandler.Selection.MaxAbsEta:                2.47
+ElectronHandler.Selection.PtPreCutGeV:              25.0
+
+
+
+#############################################
+#   MET Level
+HyyMETwits.metlevel.High:                             NO
+HyyMETwits.metlevel.inter:                            YES
+
+# HIGHMET Window
+HyyMETwits.highMETWindow.Max:                           
+HyyMETwits.highMETWindow.Min:
+
+# INTERMET Window
+HyyMETwits.interMETWindow.Max:                           
+HyyMETwits.interMETWindow.Min:
+
+# Photon mass window 
+HyyMETwits.myyWindow.low:                              105.0
+HyyMETwits.myyWindow.high:                             160.0
+######################################################
+#Samples
+HyyMETwits.Sample.name:                                 ggF
+
+#######################################################
+#  Plot Electron and Muon info
+HyyMETwits.ElectronMuon.plots:                          NO
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+

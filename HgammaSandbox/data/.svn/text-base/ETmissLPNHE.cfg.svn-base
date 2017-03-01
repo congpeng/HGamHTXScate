@@ -1,0 +1,34 @@
+########"
+#
+# Configuration file for /afs/cern.ch/work/a/alopezso/private/AnalysisHGam/HgammaSandbox/ETmissLPNHE analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        ETmissLPNHE_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HGamRel20.config
+
+##Include: 	  HGamTools/input/MCSamples.cfg
+
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+

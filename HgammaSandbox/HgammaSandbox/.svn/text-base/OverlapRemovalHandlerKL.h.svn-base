@@ -1,0 +1,113 @@
+#ifndef HgammaSandbox_OverlapRemovalHandlerKL
+#define HgammaSandbox_OverlapRemovalHandlerKL
+
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "AssociationUtils/OverlapRemovalTool.h"
+
+namespace HG {
+
+  class OverlapRemovalHandlerKL{
+     
+  public:
+    OverlapRemovalTool*  m_overlapRemovalTool;
+
+    static SG::AuxElement::Decorator<char>  outputDecorator;
+    static SG::AuxElement::Accessor<char>  outputAccessor;
+
+    TString m_name;
+    double m_e_DR_y, m_jet_DR_y, m_jet_DR_e, m_e_DR_jet;
+    double m_mu_DR_y, m_mu_DR_jet;
+    enum MatchingMode { eta_phi=0, y_phi=1 };
+    MatchingMode m_matchMode;
+    
+   template <class T> bool overlap(const xAOD::IParticle *ptcl, T ptcls, double DRcut) {
+      // negative DRcut values means that overlaps are not considered
+      if (DRcut<0) return false;
+      if      (m_matchMode==eta_phi) return HG::minDR(ptcl,ptcls)<DRcut;
+      else if (m_matchMode==y_phi) return HG::minDRrap(ptcl,ptcls)<DRcut;
+      else HG::fatal("Unsupported DR matching mode");
+      return false;
+    }
+    
+   //! \brief returns true if the ptcl doesn't match any of the ptcls within DeltaR < DRcut
+    template <class T> bool noOverlap(const xAOD::IParticle *ptcl, T ptcls, double DRcut) {
+      return !overlap(ptcl,ptcls,DRcut);
+    }
+    
+    //! \brief add the "overlaps" label to all objects
+    template <class T> 
+      void   initializeDecoration(T ptcls) {
+      for(auto ptcl:ptcls) (outputDecorator)(*ptcl) = false;
+    }
+    
+    //! \brief removes all particles from the ptcls collection that are decorated as "overlaps"=true
+    template <class T> 
+      void removeOverlaps(T &ptcls) {
+      for ( auto p=ptcls.rbegin(); p!=ptcls.rend(); ++p) {
+	if((outputDecorator)(**p))
+          ptcls.erase(p.base()-1);
+	}
+    }
+
+    //! \brief Removes any particle from ptcls that overlaps with any of particle in refPtcls
+    template <class T1, class T2> void removeOverlap(T1 &ptcls, T2 refPtcls, double DRcut) {
+      
+      // Reverse for loop over probe-particles
+      for ( auto p=ptcls.rbegin(); p!=ptcls.rend(); ++p) {
+	
+	// If the current probe-particle overlaps with any reference particle remove it!
+	// Need to convert reverse_iterator to a normal iterator, see:
+	// http://en.cppreference.com/w/cpp/iterator/reverse_iterator
+	        if ( overlap(*p,refPtcls,DRcut))
+	          ptcls.erase(p.base()-1);
+      }
+    }
+
+   //! \brief Removes any particle from ptcls that overlaps with any of particle in refPtcls
+    template <class T1> void removeElecOverlap(T1 &ptcls, double DEta, double DPhi) {
+      
+      // Reverse for loop over probe-particles
+      for (int i=0;i<ptcls.size();i++) {
+	for(int j=0;j<ptcls.size();j++){
+	  if (i==j) continue;
+	  if(elecOverlap(ptcls[j],ptcls[i],DEta,DPhi)){
+	    ptcls.erase(ptcls.begin()+j);
+	    j-=1;}}}
+    }
+
+      //! \brief check ele-ele overlap
+    bool elecOverlap(const xAOD::IParticle *probePtcl, const xAOD::IParticle *refPtcl, double DEta, double DPhi) {
+      // negative DRcut values means that overlaps are not considered
+	if (DEta<0) return false;
+	if (DPhi<0) return false;
+	if(fabs(probePtcl->eta()-refPtcl->eta())<DEta&&fabs(probePtcl->phi()-refPtcl->phi())<DPhi) return true;
+	return false;
+      }
+    
+  protected:
+
+  public:
+    OverlapRemovalHandlerKL(TString name="OverlapRemoval");
+    ~OverlapRemovalHandlerKL();
+    EL::StatusCode initialize(Config &config);
+
+    //
+    virtual void decorateOverlaps(xAOD::PhotonContainer &photonContainer,
+				  xAOD::JetContainer &jetContainer, 
+				 xAOD::ElectronContainer &electronContainer,
+				 xAOD::MuonContainer &muonContainer);
+
+    //
+    virtual void decorateModifiedOverlaps(xAOD::PhotonContainer &photonContainer,
+					  xAOD::JetContainer &jetContainer, 
+					  xAOD::ElectronContainer &electronContainer,
+					  xAOD::MuonContainer &muonContainer);
+    //
+    virtual void removeOverlaps(xAOD::PhotonContainer &photonContainer,
+				xAOD::JetContainer &jetContainer, 
+				xAOD::ElectronContainer &electronContainer,
+				xAOD::MuonContainer &muonContainer);
+  };
+}
+
+#endif // HgammaSandbox_OverlapRemovalHandlerKL_H

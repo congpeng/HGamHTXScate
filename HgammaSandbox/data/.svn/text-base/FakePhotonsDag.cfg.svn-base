@@ -1,0 +1,32 @@
+########"
+#
+# Configuration file for /Users/Dag/ATLAS/sw/analysis_2.1.31/HgammaSandbox/FakePhotonsDag analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        FakePhotonsDag_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HGamDC14.config
+
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+

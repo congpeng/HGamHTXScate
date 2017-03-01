@@ -1,0 +1,239 @@
+#include <iostream>
+#include <TString.h>
+#include <TFile.h>
+#include <TCanvas.h>
+#include <TLatex.h>
+#include <TH1F.h>
+#include <TH2F.h>
+#include <TGraphAsymmErrors.h>
+
+using namespace std; 
+
+////////////////////////// Small and very helpful functions //////////////////////////
+
+void fatal(TString msg) { printf("\nFATAL\n  %s\n\n",msg.Data()); abort(); }
+
+
+TFile *openFile(TString fn) 
+{
+  TFile *f = TFile::Open(fn);
+  if (f==nullptr) fatal("Cannot open "+fn);
+  return f;
+}
+
+
+TH1 *getHisto(TFile *f, TString hn) 
+{
+  TH1 *h = (TH1*)f->Get(hn);
+  if (h==nullptr) fatal("Cannot access histo "+hn+" in file "+f->GetName());
+  return h;
+}
+
+TH2 *getHisto2D(TFile *f, TString hn)
+{
+  TH2 *h = (TH2*)f->Get(hn);
+  if (h==nullptr) fatal("Cannot access histo "+hn+" in file "+f->GetName());
+  return h;
+}
+
+TH1 *drawHisto(TH1 *h, TString opt, int col=kBlue, int lw=2) 
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->Draw(opt); return h;
+}
+
+TH1 *drawHistoNorm(TH1 *h, TString opt, int col=kBlue, int lw=2) 
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->GetYaxis()->SetTitle("Fraction of Events / Bin");
+  int nbins = h->GetNbinsX();
+  h->SetBinContent( 1, h->GetBinContent(0)+h->GetBinContent(1));
+  h->SetBinContent( nbins, h->GetBinContent(nbins) + h->GetBinContent(nbins+1) );
+  h->Scale( 1. / h->Integral( -(nbins+1), (nbins+1) ) );
+  h->SetMaximum( 1.4 * h->GetMaximum() );
+  h->Draw(opt); return h;
+}
+
+TH2 *drawHisto2D(TH2 *h, TString opt)
+{ 
+  h->SetStats(0);
+  h->Draw(opt); return h;
+}
+
+
+TH1 *drawHisto(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2) 
+{
+  return drawHisto(getHisto(f,hn),opt,col);
+}
+
+TH1 *drawHistoNorm(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2) 
+{
+  return drawHistoNorm(getHisto(f,hn),opt,col);
+}
+
+TH2 *drawHisto2D(TFile *f, TString hn, TString opt)
+{
+  return drawHisto2D(getHisto2D(f,hn),opt);
+}
+
+void drawText(double x, double y, TString txt, int col=kBlack) 
+{
+  static TLatex *tex = new TLatex(); tex->SetNDC();
+  tex->SetTextFont(42); tex->SetTextSize(0.036); tex->SetTextColor(col);
+  tex->DrawLatex(x,y,txt);
+}
+
+void drawTextSmall(double x, double y, TString txt, int col=kBlack) 
+{
+  static TLatex *tex = new TLatex(); tex->SetNDC();
+  tex->SetTextFont(42); tex->SetTextSize(0.028); tex->SetTextColor(col);
+  tex->DrawLatex(x,y,txt);
+}
+
+
+void drawEffVsPtLabels(TString etaReg, TString convType) 
+{
+  drawText(0.13,0.9,"#bf{#it{ATLAS}} Work In Progress");
+  if (etaReg=="") drawText(0.62,0.45,"No photon #eta requirment");
+  else if (etaReg.Contains("eta1")) drawText(0.62,0.45,"|#eta| < 0.6 (truth #eta)");
+  else if (etaReg.Contains("eta2")) drawText(0.62,0.45,"0.6 < |#eta| < 1.37 (truth #eta)");
+  else if (etaReg.Contains("eta3")) drawText(0.62,0.45,"1.52 < |#eta| < 1.81 (truth #eta)");
+  else if (etaReg.Contains("eta4")) drawText(0.62,0.45,"1.81 < |#eta| < 2.37 (truth #eta)");
+
+  if (convType.Contains("conv")) drawText(0.62,0.40,"Converted photons");
+  else if (convType.Contains("uncv")) drawText(0.62,0.40,"Un-converted photons"); 
+
+  drawText(0.62,0.35,"Clusters",kBlue);
+  drawText(0.75,0.35,"Loose",kGreen+1);
+  drawText(0.62,0.30,"Tight",kRed);
+  drawText(0.75,0.30,"Selected",kYellow+1);
+}
+
+void drawMatchTypeLabels(TString Type, TString recoType) {
+  drawText(0.68,0.9,"#bf{#it{ATLAS}} Work In Progress"); 
+  if (recoType.Contains("any")) drawTextSmall(0.14,0.93,"Truth Matched w/ Reco. Photons");
+  else if (recoType.Contains("sel")) drawTextSmall(0.14,0.93,"Truth Matched w/ Tight ID + Cone20 PID Reco. Photons"); 
+  else if (recoType.Contains("loose")) drawTextSmall(0.14,0.93,"Truth Matched w/ Loose ID Reco. Photons"); 
+  else if (recoType.Contains("tight")) drawTextSmall(0.14,0.93,"Truth Matched w/ Tight ID Reco. Photon");
+  
+  if (Type.Contains("reco")) drawText(0.68,0.85,"Reconstructed Photons");
+  if (Type.Contains("true") || Type.Contains("reso") || Type.Contains("frac")) drawText(0.68,0.85,"Truth Photons");
+}
+
+void drawPhotonLabels(TString etaReg) {
+  TString label = "";
+  if (etaReg.Contains("_eta1")) label += "|#eta| < 0.6 , ";
+  if (etaReg.Contains("_eta2")) label += "0.6 < |#eta| < 1.37 , ";
+  if (etaReg.Contains("_eta3")) label += "1.52 < |#eta| < 1.81 , ";
+  if (etaReg.Contains("_eta4")) label += "1.81 < |#eta| < 2.37 , ";
+  label += "#it{p}_{T} > 25 GeV";
+  //drawTextSmall(0.14,0.93,"Truth matched to Tight ID Reco Photons");
+  drawTextSmall(0.14,0.90,label);
+}
+
+
+void drawConvLabels(TString etaReg) { 
+  drawText(0.68,0.85,"Converted ",kRed);
+  drawText(0.68,0.80,"Un-Converted ",kBlue);
+  drawPhotonLabels(etaReg);
+}
+
+
+double integrate(TFile *f, TString hn )
+{ 
+  TH1 *h =  getHisto(f,hn); 
+  double sum = h->Integral(); 
+  return sum; 
+} 
+
+
+///////////////////////// The main plotting function ////////////////////////////////
+int main(int argc, char **argv) 
+{
+  // input file name
+
+  TString inFN, pdf; 
+  for (int i=1;i<argc;++i) 
+  {
+    TString arg(argv[i]);
+    if (arg=="--inputFile") inFN=argv[++i];
+    if (arg=="--pdfFile") pdf=argv[++i];
+    if (arg=="-in") inFN=argv[++i];
+    if (arg=="-pdf") pdf=argv[++i];
+  }
+
+  printf("\n  Running plotRecoEff\n");
+  printf("  input file: %s\n",inFN.Data());
+  TFile *f = openFile(inFN);
+
+  // Create output pdf
+  // Set style
+  TCanvas *can = new TCanvas();
+  can->SetTopMargin(0.04); can->SetRightMargin(0.04);
+  can->Print(pdf+"[");
+  bool drawName = 0; 
+  int bin = 1; 
+  //can->SetLogx();   
+
+
+  for ( TString hvar: {"h_eff_pt", "h_eff_eta"} ) {
+    for( TString recoType: {"_any","_loose","_tight","_sel"} ) {
+
+      // overlay conv and unconv plots
+      for( TString etaReg: {"","_eta1","_eta2","_eta3","_eta4"} ) {
+        if (hvar.Contains("_eta") && (etaReg != "")) continue;
+          TH1 *histo1 = drawHisto(f,hvar+recoType+etaReg+"_conv" ,"",kRed);     histo1 -> Rebin(bin);
+          TH1 *histo2 = drawHisto(f,hvar+recoType+etaReg+"_uncv","same",kBlue); histo2 -> Rebin(bin);
+          if ( hvar.Contains("pt") ) {
+            histo1->SetTitle(";photon  #it{p}_{T} [GeV];Reconstruction efficiency");
+            histo1->GetXaxis()->SetRangeUser(0,400);
+          } else if (hvar.Contains("eta") ) {
+            histo1->SetTitle(";photon #it{#eta} [GeV];Reconstruction efficiency");
+            histo1->GetXaxis()->SetRangeUser(-3,3);
+          }
+          histo1->GetYaxis()->SetRangeUser(0.2,1.2); 
+          drawMatchTypeLabels(hvar, recoType); 
+          drawConvLabels(etaReg);
+          if(drawName) drawText(0.67,0.97,"h"+hvar+recoType+etaReg+"_conv_uncv");
+          can->Print(pdf);
+      }
+    }
+  }
+  
+
+
+  //Efficiency plots  
+  for( TString hvar: {"h_eff_pt","h_eff_eta"} ) 
+  {
+    for( TString etaReg: {"","_eta1", "_eta2", "_eta3", "_eta4"} )  
+    {
+      for( TString convType: {"", "_conv","_uncv"} ) 
+      {
+          TH1 *eff1 = drawHisto(f, hvar+"_any"+etaReg+convType,"",kBlue);         eff1 -> Rebin(bin);
+          if ( hvar.Contains("pt") ) {  
+            eff1->SetTitle(";photon  #it{p}_{T} [GeV];Reconstruction efficiency");
+            eff1->GetXaxis()->SetRangeUser(0,400);
+          } else if (hvar.Contains("eta") ) {
+            eff1->SetTitle(";photon #it{#eta} [GeV];Reconstruction efficiency");
+            eff1->GetXaxis()->SetRangeUser(-3,3); 
+          }
+          eff1->GetYaxis()->SetRangeUser(0.2,1.2); 
+          TH1 *eff2 = drawHisto(f,hvar+"_loose"+etaReg+convType,"same",kGreen+1); eff2 -> Rebin(bin); 
+          TH1 *eff3 = drawHisto(f,hvar+"_tight"+etaReg+convType,"same",kRed);     eff3 -> Rebin(bin);
+          TH1 *eff4 = drawHisto(f,hvar+"_sel"+etaReg+convType,"same",kYellow+1);  eff4 -> Rebin(bin);
+          drawEffVsPtLabels(etaReg, convType);
+          if(drawName) drawText(0.67,0.97,"h"+hvar+etaReg+convType);
+          can->Print(pdf);
+      }
+    }
+  }
+
+
+  can->Print(pdf+"]");
+  printf("  Produced: %s\n\n",pdf.Data());
+  f->Close();
+
+
+}
+
+

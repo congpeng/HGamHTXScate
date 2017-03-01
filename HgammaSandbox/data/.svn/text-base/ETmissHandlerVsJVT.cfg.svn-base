@@ -1,0 +1,32 @@
+########"
+#
+# Configuration file for /afs/cern.ch/work/a/alopezso/private/AnalysisHGam/HgammaSandbox/ETmissHandlerVsJVT analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        ETmissHandlerVsJVT_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HGamMC15.config
+
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+

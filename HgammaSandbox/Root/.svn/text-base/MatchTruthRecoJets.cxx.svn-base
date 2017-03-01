@@ -1,0 +1,330 @@
+#include "HgammaSandbox/MatchTruthRecoJets.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include <EventLoop/Worker.h>
+
+#include <vector>
+#include <string>
+#include <TLorentzVector.h>
+
+template<typename T> inline bool in(T a, T x, T b) noexcept {
+  //if (b < a) std::swap(a,b);
+  return ( (a<=x) && (x<=b) );
+}
+
+template<typename T>
+inline const TLorentzVector* p4(const T& p) noexcept {
+  return &p->p4();
+}
+template<>
+inline const TLorentzVector* p4<const TLorentzVector*>
+(TLorentzVector const * const & p) noexcept {
+  return p;
+}
+
+template<typename T1, typename T2>
+inline double deltaR(const T1* a, const T2* b) noexcept {
+  return p4(a)->DeltaR(*p4(b));
+}
+
+template<typename JC, typename C>
+void remove_overlap(JC& jets, const C& rm, double R) noexcept {
+  for (auto j=jets.begin(); j!=jets.end();) {
+    if (HG::minDRrap(*j, rm) < R) {
+      j = jets.erase(j);
+      continue;
+    }
+    ++j;
+  }
+}
+
+template<typename C>
+struct std_vec { using type = std::vector<typename C::value_type>; };
+template<typename T>
+struct std_vec<DataVector<T>> { using type = std::vector<const T*>; };
+
+template<typename Truth, typename Reco>
+typename std_vec<Reco>::type match
+(const Truth& truth, const Reco& reco, double R) noexcept {
+  typename std_vec<Reco>::type matches;
+  const size_t n = truth.size();
+  matches.reserve(n);
+  for (size_t i=0; i<n; ++i) {
+    bool matched = false;
+    for (auto *r : reco) {
+      if (std::find(matches.begin(),matches.end(),r) == matches.end()) {
+        if (deltaR(truth[i],r) < R) {
+          matches.push_back(r);
+          matched = true;
+          break;
+        }
+      }
+    }
+    if (!matched) matches.push_back(nullptr);
+  }
+  return matches;
+}
+
+#define get_(var) \
+  inline double get_##var(const TLorentzVector* p) noexcept
+
+get_(E)   { return p->E()/HG::GeV; }
+get_(pt)  { return p->Pt()/HG::GeV; }
+get_(rap) { return p->Rapidity(); }
+get_(eta) { return p->Eta(); }
+get_(phi) { return p->Phi(); }
+get_(mass){ return p->M()/HG::GeV; }
+get_(abs_eta){ return abs(get_eta(p)); }
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(MatchTruthRecoJets)
+
+MatchTruthRecoJets::MatchTruthRecoJets(const char *name): HgammaAnalysis(name) { }
+MatchTruthRecoJets::~MatchTruthRecoJets() { }
+
+struct MatchTruthRecoJets::impl {
+  TTree *tree;
+  std::vector<TH1*> hists;
+
+  Float_t jet_pt[2];
+  Float_t jet_eta[2];
+  Float_t jet_phi[2];
+  Float_t jet_E[2];
+  Char_t  reco;
+
+  struct hist {
+    TH1 *truth, *reco, *resp, *eff;
+    bool ratio;
+
+    void book(impl* p,
+      const std::string& name, Int_t nbinsx, Double_t xlow, Double_t xup,
+      const std::string& xtitle, bool ratio = true
+    ) {
+      this->ratio = ratio;
+      p->hists.push_back( truth = new TH1D((name+"_truth").c_str(),
+        ("Truth "+name).c_str(),nbinsx,xlow,xup) );
+      p->hists.push_back( reco  = new TH1D((name+"_reco").c_str(),
+        ("Reco "+name).c_str(),nbinsx,xlow,xup) );
+      p->hists.push_back( eff = new TProfile((name+"_eff").c_str(),
+        ("Reco eff vs truth "+name).c_str(),nbinsx,xlow,xup) );
+      p->hists.push_back( resp  = new TH1D((name+"_resp").c_str(),
+        (name+" response").c_str(), 100, (ratio ? 0 : -1), (ratio ? 2 : 1) ) );
+
+      truth->SetXTitle(xtitle.c_str());
+      reco ->SetXTitle(xtitle.c_str());
+      eff  ->SetXTitle(xtitle.c_str());
+      resp ->SetXTitle(
+        ("reco_"+name+" "+(ratio?"/":"#minus")+" truth_"+name).c_str());
+    }
+
+    template <typename T, typename R, typename Calculation>
+    inline void fill(const T& tp, const R& rp, Calculation calc) noexcept {
+      Double_t xt=0., xr=0.;
+      if (tp) {
+        truth->Fill(xt = calc(p4(tp)));
+        eff  ->Fill(xt, (bool)rp);
+        if (rp) {
+          reco->Fill(xr = calc(p4(rp)));
+          resp->Fill(ratio ? xr/xt : xr-xt);
+        }
+      }
+    }
+
+  } h_jet_E, h_jet_pt, h_jet_rap, h_jet_eta, h_jet_phi, h_jet_mass,
+    h_AA_E, h_AA_pt, h_AA_rap, h_AA_eta, h_AA_phi, h_AA_mass,
+    h_A_E, h_A_pt, h_A_rap, h_A_eta, h_A_phi;
+
+  struct mult_hist {
+    TH1 *truth, *reco, *resp, *eff;
+
+    void book(impl* p,
+      const std::string& name, Int_t max, const std::string& long_name=""
+    ) {
+      const std::string& lname = long_name.size() ? long_name : name;
+      const std::string  lmult = lname + " multiplicity";
+      Int_t nbinsx  = max + 1;
+      Double_t xlow = -0.5;
+      Double_t xup  = max + 0.5;
+      p->hists.push_back( truth = new TH1D((name+"_mult_truth").c_str(),
+        ("Truth "+lmult).c_str(),nbinsx,xlow,xup) );
+      p->hists.push_back( reco = new TH1D((name+"_mult_reco").c_str(),
+        ("Reco "+lmult).c_str(),nbinsx,xlow,xup) );
+      p->hists.push_back( eff = new TProfile((name+"_mult_eff").c_str(),
+        ("Reco eff of "+lmult).c_str(),nbinsx,xlow,xup) );
+
+      nbinsx -= 1;
+      xlow = -nbinsx;
+      xup  = nbinsx;
+      (nbinsx *= 2) += 1;
+      p->hists.push_back( resp = new TH1D((name+"_mult_resp").c_str(),
+        (lmult+" response").c_str(),nbinsx,xlow,xup) );
+
+      const std::string xtitle = "Event " + lmult;
+      truth->SetXTitle(xtitle.c_str());
+      reco ->SetXTitle(xtitle.c_str());
+      eff  ->SetXTitle(xtitle.c_str());
+      eff  ->SetYTitle(("N^{reco}_{"+lname+"} / N^{truth}_{"+lname+"}").c_str());
+      resp ->SetXTitle(
+        ("N^{reco}_{"+lname+"} #minus N^{truth}_{"+lname+"}").c_str());
+    }
+
+    inline void fill(int xt, int xr) noexcept {
+      truth->Fill(xt);
+      reco ->Fill(xr);
+      resp ->Fill(xr-xt);
+      if (xt) eff->Fill(xt, xr/xt);
+    }
+  } h_jet_mult, h_A_mult;
+
+};
+
+EL::StatusCode MatchTruthRecoJets::createOutput() {
+  p = new impl;
+  if (save_tree) {
+    p->tree = new TTree("jets","matched truth and reco jets");
+    p->tree->Branch("reco",&p->reco   ,    "reco/B");
+    p->tree->Branch("pt"  , p->jet_pt , "pt[reco]/F");
+    p->tree->Branch("eta" , p->jet_eta,"eta[reco]/F");
+    p->tree->Branch("phi" , p->jet_phi,"phi[reco]/F");
+    p->tree->Branch("E"   , p->jet_E  ,  "E[reco]/F");
+  }
+  if (save_hists) {
+    p->h_jet_mult.book(p,"jet",9);
+
+    p->h_jet_E   .book(p,"jet_E"   ,100,    0, 500,"E [GeV]");
+    p->h_jet_pt  .book(p,"jet_pt"  ,100,    0, 500,"p_{T} [GeV]");
+    p->h_jet_rap .book(p,"jet_rap" , 50,   -5,   5,"y"   ,false);
+    p->h_jet_eta .book(p,"jet_eta" , 50,   -5,   5,"#eta",false);
+    p->h_jet_phi .book(p,"jet_phi" , 50,-M_PI,M_PI,"#phi",false);
+    p->h_jet_mass.book(p,"jet_mass", 50,    0, 100,"m [GeV]");
+
+    p->h_AA_E   .book(p,"AA_E"   ,100,    0, 500,"E [GeV]");
+    p->h_AA_pt  .book(p,"AA_pt"  ,100,    0, 500,"p_{T} [GeV]");
+    p->h_AA_rap .book(p,"AA_rap" , 50,   -3,   3,"y"   ,false);
+    p->h_AA_eta .book(p,"AA_eta" , 50,   -5,   5,"#eta",false);
+    p->h_AA_phi .book(p,"AA_phi" , 50,-M_PI,M_PI,"#phi",false);
+    p->h_AA_mass.book(p,"AA_mass", 50,  100, 150,"m [GeV]");
+
+    p->h_A_mult.book(p,"A",4,"photon");
+
+    p->h_A_E  .book(p,"A_E"  ,100,    0, 500,"E [GeV]");
+    p->h_A_pt .book(p,"A_pt" ,100,    0, 500,"p_{T} [GeV]");
+    p->h_A_rap.book(p,"A_rap", 50,   -3,   3,"y"   ,false);
+    p->h_A_eta.book(p,"A_eta", 50,   -3,   3,"#eta",false);
+    p->h_A_phi.book(p,"A_phi", 50,-M_PI,M_PI,"#phi",false);
+  }
+  return EL::StatusCode::SUCCESS;
+}
+
+EL::StatusCode MatchTruthRecoJets::initialize() {
+  const EL::StatusCode code = HgammaAnalysis::initialize();
+  if ((save_tree  = config()->getBool("MatchTruthRecoJets.SaveTree", true)))
+    wk()->addOutput(p->tree);
+  if ((save_hists = config()->getBool("MatchTruthRecoJets.SaveHists", true)))
+    for (auto* h : p->hists) wk()->addOutput(h);
+  return code;
+}
+
+EL::StatusCode MatchTruthRecoJets::execute() {
+  HgammaAnalysis::execute();
+
+  // NOTE: HGamAnalysisFramework containers are sorted by pT
+
+  // Photons ********************************************************
+  // Get truth photons
+  xAOD::TruthParticleContainer tAs_raw = truthHandler()->getPhotons();
+  const xAOD::TruthParticleContainer tAs = truthHandler()->applyPhotonSelection(tAs_raw);
+
+  // Must have at least 2 truth photons
+  if (tAs.size() < 2) return EL::StatusCode::SUCCESS;
+
+  // Truth diphoton
+  const auto *tAA = new auto(*p4(tAs[0]) + *p4(tAs[1]));
+  // must have Higgs mass
+  if (!in(120.,get_mass(tAA),130.)) {
+    delete tAA;
+    return EL::StatusCode::SUCCESS;
+  }
+
+  // Get reco photons
+  xAOD::PhotonContainer rAs_raw = photonHandler()->getCorrectedContainer();
+  const xAOD::PhotonContainer rAs_sel = photonHandler()->applySelection(rAs_raw);
+
+  // Match reco photons with truth photons
+  const auto rAs = match(tAs,rAs_sel,0.4);
+
+  // Reco diphoton
+  const auto *rAA = ( rAs[0] && rAs[1]
+                  ? new auto(*p4(rAs[0]) + *p4(rAs[1])) : nullptr );
+
+  // Jets ***********************************************************
+  xAOD::JetContainer tjets_raw = truthHandler()->getJets();
+  xAOD::JetContainer tjets = truthHandler()->applyJetSelection(tjets_raw);
+  remove_overlap(tjets,tAs,0.4);
+  const size_t ntjets = tjets.size();
+
+  xAOD::JetContainer rjets_raw = jetHandler()->getCorrectedContainer();
+  xAOD::JetContainer rjets_sel = jetHandler()->applySelection(rjets_raw);
+  remove_overlap(rjets_sel,rAs_sel,0.4);
+
+  const auto rjets = match(tjets,rjets_sel,0.4);
+
+  // Fill tree ******************************************************
+  if (save_tree) {
+    for (size_t i=0; i<ntjets; ++i) {
+      p->jet_pt [0] = get_pt (p4(tjets[i]));
+      p->jet_eta[0] = get_eta(p4(tjets[i]));
+      p->jet_phi[0] = get_phi(p4(tjets[i]));
+      p->jet_E  [0] = get_E  (p4(tjets[i]));
+      if (rjets[i]) {
+        p->reco = 2;
+        p->jet_pt [1] = get_pt (p4(rjets[i]));
+        p->jet_eta[1] = get_eta(p4(rjets[i]));
+        p->jet_phi[1] = get_phi(p4(rjets[i]));
+        p->jet_E  [1] = get_E  (p4(rjets[i]));
+      } else p->reco = 1;
+      p->tree->Fill();
+    }
+  }
+
+  // Fill histograms ************************************************
+  if (save_hists) {
+    // Jets -----------------------------------------------
+    size_t nrjets = 0;
+    for (size_t i=0; i<ntjets; ++i) {
+      p->h_jet_E   .fill( tjets[i], rjets[i], get_E   );
+      p->h_jet_pt  .fill( tjets[i], rjets[i], get_pt  );
+      p->h_jet_rap .fill( tjets[i], rjets[i], get_rap );
+      p->h_jet_eta .fill( tjets[i], rjets[i], get_eta );
+      p->h_jet_phi .fill( tjets[i], rjets[i], get_phi );
+      p->h_jet_mass.fill( tjets[i], rjets[i], get_mass);
+      if (rjets[i]) ++nrjets;
+    }
+    p->h_jet_mult.fill(ntjets,nrjets);
+
+    // Photons --------------------------------------------
+    const size_t ntAs = tAs.size();
+    size_t nrAs = 0;
+    for (size_t i=0; i<ntAs; ++i) {
+      p->h_A_E  .fill( tAs[i], rAs[i], get_E   );
+      p->h_A_pt .fill( tAs[i], rAs[i], get_pt  );
+      p->h_A_rap.fill( tAs[i], rAs[i], get_rap );
+      p->h_A_eta.fill( tAs[i], rAs[i], get_eta );
+      p->h_A_phi.fill( tAs[i], rAs[i], get_phi );
+      if (rAs[i]) ++nrAs;
+    }
+    p->h_A_mult.fill(ntAs,nrAs);
+
+    // Diphoton -------------------------------------------
+    p->h_AA_E   .fill( tAA, rAA, get_E   );
+    p->h_AA_pt  .fill( tAA, rAA, get_pt  );
+    p->h_AA_rap .fill( tAA, rAA, get_rap );
+    p->h_AA_eta .fill( tAA, rAA, get_eta );
+    p->h_AA_phi .fill( tAA, rAA, get_phi );
+    p->h_AA_mass.fill( tAA, rAA, get_mass);
+  }
+
+  delete tAA;
+  delete rAA;
+
+  return EL::StatusCode::SUCCESS;
+}

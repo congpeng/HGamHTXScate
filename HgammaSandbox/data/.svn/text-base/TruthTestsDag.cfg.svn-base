@@ -1,0 +1,32 @@
+########"
+#
+# Configuration file for /Users/Dag/ATLAS/sw/analysis_2.1.26/HgammaSandbox/TruthTestsDag analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        TruthTestsDag_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HgammaConfig.cfg
+
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+

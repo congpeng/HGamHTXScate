@@ -1,0 +1,352 @@
+#include <iostream>
+#include <TString.h>
+#include <TFile.h>
+#include <TCanvas.h>
+#include <TLatex.h>
+#include <TH1F.h>
+#include <TH2F.h>
+#include <TGraphAsymmErrors.h>
+#include <TF1.h>
+
+#include <string.h>
+#include "TChain.h"
+#include "TDirectory.h"
+#include "TH1.h"
+#include "TTree.h"
+#include "TKey.h"
+#include "Riostream.h"
+
+
+using namespace std;
+
+bool drawHistName = 1;  
+TString histLbl1  = "25ns"; //blue 
+TString histLbl2  = "50ns";  //red
+ 
+//////////////////////
+//
+// Helper functions
+//
+/////////////////////
+
+void fatal(TString msg) { printf("\nFATAL\n  %s\n\n",msg.Data()); abort(); }
+
+// Open T-file
+TFile *openFile(TString fn)
+{
+  TFile *f = TFile::Open(fn);
+  if (f==nullptr) fatal("Cannot open "+fn);
+  return f;
+}
+
+// Get TH1
+TH1 *getHisto(TFile *f, TString hn)
+{
+  TH1 *h = (TH1*)f->Get(hn);
+  if (h==nullptr) fatal("Cannot access histo "+hn+" in file "+f->GetName());
+  return h;
+}
+
+// Draw TH1
+TH1 *drawHisto(TH1 *h, TString opt, int col=kBlue, int lw=2)
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->Draw(opt); return h;
+}
+
+// Draw normalized TH1
+TH1 *drawHistoNorm(TH1 *h, TString opt, int col=kBlue, int lw=2)
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->GetYaxis()->SetTitle("Fraction of Events / Bin");
+  h->DrawNormalized(opt); return h;
+}
+
+// Draw TH1
+TH1 *drawHisto(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2)
+{
+  return drawHisto(getHisto(f,hn),opt,col);
+}
+
+// Draw normalized TH1
+TH1 *drawHistoNorm(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2)
+{
+  return drawHistoNorm(getHisto(f,hn),opt,col);
+}
+
+// Draw text
+void drawText(double x, double y, TString txt, int col=kBlack)
+{
+  static TLatex *tex = new TLatex(); tex->SetNDC();
+  tex->SetTextFont(42); tex->SetTextSize(0.036); tex->SetTextColor(col);
+  tex->DrawLatex(x,y,txt);
+}
+
+// Draw text
+void drawTextSmall(double x, double y, TString txt, int col=kBlack)
+{
+  static TLatex *tex = new TLatex(); tex->SetNDC();
+  tex->SetTextFont(42); tex->SetTextSize(0.028); tex->SetTextColor(col);
+  tex->DrawLatex(x,y,txt);
+}
+
+void drawPhotonLabels(TString phType, TString convType, TString etaReg) {
+  TString label = "";
+  if (phType.Contains("_lead")) label += "Leading ";
+  if (phType.Contains("_subl")) label += "Sub-Leading ";
+  if (convType.Contains("_conv")) label += "Converted ";
+  if (convType.Contains("_uncv")) label += "Unconverted ";
+  if (etaReg.Contains("_ctrl")) label += "Barrel ";
+  if (etaReg.Contains("_fwd"))  label += "Endcap ";
+  label += "Photons (#it{p}_{T} > 25 GeV), ggF MC";
+  drawTextSmall(0.14,0.93,label);
+}
+
+
+// Draw hist labels
+void drawLabels(TString hvar, TString recoType, TString etaReg, bool eff = 0, bool reso = 0 ) {
+  // arrays that hold position of labels
+
+  float posAll[8]  = {0.68, 0.90, 0.85, 0.62, 0.65, 0.80, 0.83, 0.75}; 
+  float posEff[8]  = {0.68, 0.55, 0.50, 0.62, 0.65, 0.45, 0.83, 0.40};
+  float      *pos        = eff == 1 ? posEff : posAll;   
+   
+  //drawText(pos[0],pos[1],"#bf{#it{ATLAS}} Work In Progress");
+  // Reco type labels
+  if (recoType.Contains("any")) drawText(pos[0],pos[2],"Any matched "+hvar+" photons");
+    else if (recoType.Contains("sel")) drawText(pos[3],pos[2],"Selected matched "+hvar+" photons");
+    else if (recoType.Contains("loose")) drawText(pos[4],pos[2],"Loose matched "+hvar+" photons");
+    else if (recoType.Contains("tight")) drawText(pos[4],pos[2],"Tight matched "+hvar+"photons");
+  // Eta labels
+  if (etaReg.Contains("ctrl"))        drawText(pos[0],pos[5],"Photon #eta_{truth} < 1.37");
+    else if (etaReg.Contains("fwd"))  drawText(pos[4],pos[5],"1.52 < Photon #eta_{truth} < 2.37 ");
+    else if (etaReg.Contains(""))     drawText(pos[0],pos[5],"No #eta requirement");
+  // hist1 vs hist2
+  if (reso == 0) { 
+    drawText(pos[6],pos[7],histLbl1,kBlue);
+    drawText(pos[0],pos[7],histLbl2,kRed);
+  } else { 
+    drawText(0.68,0.75,"25 < reco pT < 50 GeV"  , kBlue);
+    drawText(0.68,0.70,"50 < reco pT < 80 GeV"  , 7);
+    drawText(0.68,0.65,"80 < reco pT < 100 GeV" , kGreen+1);
+    drawText(0.68,0.60,"100 < reco pT < 120 GeV", kOrange);
+    drawText(0.68,0.55,"120 < reco pT < 150 GeV", 46);
+    drawText(0.68,0.50,"reco pT > 150 GeV"      , kRed);
+  } 
+}
+
+
+void drawEffLabel(TString hvar, TString recoType, TString etaReg, TString convType )
+{ 
+
+  //drawText(0.68,0.55,"#bf{#it{ATLAS}} Work In Progress");
+ 
+  if (recoType.Contains("any"))          drawText(0.65,0.45,"Any matched "+hvar+" photons");
+    else if (recoType.Contains("sel"))   drawText(0.65,0.45,"Selected matched "+hvar+" photons");
+    else if (recoType.Contains("loose")) drawText(0.65,0.45,"Loose matched "+hvar+" photons");
+    else if (recoType.Contains("tight")) drawText(0.65,0.45,"Tight matched "+hvar+"photons");  
+
+  if (etaReg.Contains("ctrl"))        drawText(0.65,0.40,"Photon #eta_{truth} < 1.37");
+    else if (etaReg.Contains("fwd"))  drawText(0.65,0.40,"1.52 < Photon #eta_{truth} < 2.37 ");
+    else if (etaReg.Contains(""))     drawText(0.65,0.40,"No #eta requirement");
+
+  drawText(0.75,0.35,histLbl1,kBlue);
+  drawText(0.65,0.35,histLbl2,kRed);
+
+} 
+
+
+void drawRecoLabels(TString hvar, TString recoType, TString etaReg, TString convType)
+{ 
+
+  if (recoType.Contains("any"))          drawText(0.65,0.80,"Any matched "+hvar+" photons");
+    else if (recoType.Contains("sel"))   drawText(0.65,0.80,"Selected matched "+hvar+" photons");
+    else if (recoType.Contains("loose")) drawText(0.65,0.80,"Loose matched "+hvar+" photons");
+    else if (recoType.Contains("tight")) drawText(0.65,0.80,"Tight matched "+hvar+"photons");
+
+  if (etaReg.Contains("ctrl"))        drawText(0.65,0.75,"Photon #eta_{truth} < 1.37");
+    else if (etaReg.Contains("fwd"))  drawText(0.65,0.75,"1.52 < Photon #eta_{truth} < 2.37 ");
+    else if (etaReg.Contains(""))     drawText(0.65,0.75,"No #eta requirement");
+
+  drawText(0.75,0.70,histLbl1,kBlue);
+  drawText(0.65,0.70,histLbl2,kRed);
+
+
+} 
+
+
+void drawRMSLabels(TH1* hist1, TH1* hist2, int col1=kBlack, int col2=kBlack)
+{ 
+  drawTextSmall(0.65,0.70,"Mean: "+to_string(hist1->GetMean()),col1);
+  drawTextSmall(0.65,0.65,"RMS: " +to_string(hist1->GetRMS()) ,col1);
+  drawTextSmall(0.8 ,0.70,"Mean: "+to_string(hist2->GetMean()),col2);
+  drawTextSmall(0.8 ,0.65,"RMS: " +to_string(hist2->GetRMS()) ,col2);
+} 
+
+
+void drawResoPlots(TFile *f, TString tag, TString recoType, TString etaReg ) 
+{
+  //TH1 *res5 = drawHistoNorm(f, tag+"_bin5" ,""    , kRed);
+  TH1 *res0 = drawHistoNorm(f, tag+"_bin0" ,"same", kBlue);
+  TH1 *res1 = drawHistoNorm(f, tag+"_bin1" ,"same", 7);
+  TH1 *res2 = drawHistoNorm(f, tag+"_bin2" ,"same", kGreen+1);
+  TH1 *res3 = drawHistoNorm(f, tag+"_bin3" ,"same", kOrange);
+  TH1 *res4 = drawHistoNorm(f, tag+"_bin4" ,"same", 46);
+  drawLabels("", recoType, etaReg, 0, 1); 
+ 
+  drawTextSmall(0.17 ,0.85 ,"Mean: " +to_string(res0->GetMean()) ,kBlue);
+  drawTextSmall(0.17 ,0.80 ,"RMS: "  +to_string(res0->GetRMS())  ,kBlue);
+  drawTextSmall(0.17 ,0.75 ,"Mean: " +to_string(res1->GetMean()) ,7);
+  drawTextSmall(0.17 ,0.70 ,"RMS: "  +to_string(res1->GetRMS())  ,7);
+  drawTextSmall(0.17 ,0.65 ,"Mean: " +to_string(res2->GetMean()) ,kGreen+1);
+  drawTextSmall(0.17 ,0.60 ,"RMS: "  +to_string(res2->GetRMS())  ,kGreen+1);
+  drawTextSmall(0.17 ,0.55 ,"Mean: " +to_string(res3->GetMean()) ,kOrange);
+  drawTextSmall(0.17 ,0.50 ,"RMS: "  +to_string(res3->GetRMS())  ,kOrange);
+  drawTextSmall(0.17 ,0.45 ,"Mean: " +to_string(res4->GetMean()) ,46);
+  drawTextSmall(0.17 ,0.40 ,"RMS: "  +to_string(res4->GetRMS())  ,46);
+  //drawTextSmall(0.17 ,0.35 ,"Mean: " +to_string(res5->GetMean()) ,kRed);
+  //drawTextSmall(0.17 ,0.30 ,"RMS: "  +to_string(res5->GetRMS())  ,kRed);
+
+}
+
+void formatRatio( TH1* ratio, TH1* eff1A)
+{ 
+  ratio -> Divide(eff1A);
+  ratio -> SetMinimum(-50);
+  ratio -> SetMaximum(50);
+  ratio -> Sumw2();  
+
+  // y-axis settings 
+  ratio -> GetYaxis()->SetNdivisions(505);
+  ratio -> GetYaxis()-> SetTitle("Ratio");
+  ratio -> GetYaxis()->SetTitleSize(0.1);
+  ratio -> GetYaxis()->SetTitleOffset(0.35);
+  ratio -> GetYaxis()->SetLabelSize(0.1);
+  
+  // x axis settings 
+  ratio -> GetXaxis()->SetTitleSize(0.1);
+  ratio -> GetXaxis()->SetLabelSize(0.1);
+  
+  // ratio plot settings 
+  ratio -> SetLineColor(kBlack);
+  ratio -> SetMarkerStyle(20);
+  ratio -> Draw("e1p");
+  
+  // add line at 1
+  TF1 *oneLine = new TF1("ol0", "1", -100, 300 );
+  oneLine -> SetLineWidth(2);
+  oneLine -> SetLineColor(kBlack);
+  oneLine -> Draw("same");
+}
+
+
+
+//////////////////////
+//
+// Main Plotting Code 
+//
+///////////////////////
+
+
+int main(int argc, char **argv)
+{ 
+  TString file1, file2, pdf; 
+  for (int i=1;i<argc;++i)
+  {
+    TString arg(argv[i]);
+    if (arg=="-in1") file2=argv[++i];
+    if (arg=="-in2") file1=argv[++i];
+    if (arg=="-pdf") pdf=argv[++i];
+  }
+
+  cout << "\n Overlaying histograms ... \n" << endl;
+ 
+  TFile *f1  = openFile(file1);
+  TFile *f2  = openFile(file2);
+
+  TCanvas *can = new TCanvas();
+  can->SetTopMargin(0.04); can->SetRightMargin(0.04);
+  can->Print(pdf+"[");
+
+
+  TPad *pad1 = new TPad("pad1","pad1",0,0.3,1,1);
+  pad1->SetBottomMargin(0);
+  pad1->SetGridx(1); // Turn on grid 
+  pad1->SetGridy(1); 
+  pad1->Draw();  
+
+  TPad *pad2 = new TPad("pad2","pad2",0,0.05,1,0.3);
+  pad2->SetBottomMargin(.4);
+  pad2->SetGridx(1); // Turn on grid 
+  pad2->SetGridy(1);   
+  pad2->Draw();
+  pad2->cd(); 
+
+
+  TString tag;  
+  //for ( TString hvar: {"_reco_pt", "_reco_eta", "_true_pt", "_true_eta"} ) {
+    for( TString recoType: {"_any","_loose","_tight","_sel"} ) {
+      for( TString etaReg: {"","_ctrl","_fwd"} ) {
+        for (TString convType: {"", "_conv", "_uncv"}) { 
+          for( TString phType: {"","_lead","_subl"}) {
+            tag = recoType + etaReg + convType + phType;
+  
+            
+            // Reco pt and eta plots
+            pad1->cd(); 
+            TH1* histRpt1 = drawHistoNorm(f1, "h_reco_pt"+tag ,"",kRed);
+            TH1* histRpt2 = drawHistoNorm(f2, "h_reco_pt"+tag ,"same",kBlue);
+            drawRecoLabels("reco" ,recoType, etaReg, convType);  
+            if (drawHistName) drawText(0.67,0.97,"h_reco_pt"+tag); 
+
+            pad2->cd();
+            TH1F *ratioPt1 = (TH1F*)histRpt2->Clone("ratio");
+            formatRatio(ratioPt1, histRpt1); 
+            can->Print(pdf);
+             
+            pad1->cd();
+            TH1* histReta1 = drawHistoNorm(f1, "h_reco_eta"+tag ,"",kRed);
+            TH1* histReta2 = drawHistoNorm(f2, "h_reco_eta"+tag ,"same",kBlue);
+            drawRecoLabels("reco", recoType, etaReg, convType);
+            if (drawHistName) drawText(0.67,0.97,"h_reco_eta"+tag);
+            
+            pad2->cd();
+            TH1F *ratioEta1 = (TH1F*)histReta2->Clone("ratio");
+            formatRatio(ratioEta1, histReta1);
+            can->Print(pdf);
+            
+        
+
+
+        }
+      } 
+    } 
+  }              
+
+  can->Print(pdf+"]");
+  cout << "Produced: \n" << pdf.Data() << endl; 
+  f1 -> Close();
+  f2 -> Close(); 
+
+
+}  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

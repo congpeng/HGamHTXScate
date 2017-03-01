@@ -1,0 +1,77 @@
+#ifndef HgammaSandbox_ETmissLPNHE_H
+#define HgammaSandbox_ETmissLPNHE_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+#include "HgammaSandbox/ETmissHandlerLMMC15.h"
+#include "METUtilities/METMaker.h"
+#include <map>
+
+class ETmissLPNHE : public HgammaAnalysis
+{
+public:
+
+
+  int m_bins_ETmiss_xy=500;
+  int m_bins_ETmiss_Total=1000;
+  int m_bins_sumET=500;
+  int m_bins_ETscale=250;
+
+  double m_min_ETmiss_xy=-250.;
+  double m_max_ETmiss_xy=250.;
+  double m_min_ETmiss_Total=0.;
+  double m_max_ETmiss_Total=1000.;
+  double m_min_sumET=0.;
+  double m_max_sumET=1000.;
+
+  double m_min_ETscale=0.;
+  double m_max_ETscale=500.;
+
+
+
+private:
+
+  HG::ETmissHandlerLMMC15 *m_ETmissHandler_JVT;//!
+
+  std::map<TString,std::vector<TH1F*> > resol_map, ETscale_map;
+  std::map<double,HG::ETmissHandlerLMMC15*> JVT_map;
+
+
+  std::vector<TString> ETmiss_Algs  {"TST","CST"};
+  std::vector<TString> vector_components  {"T","x","y"};
+  std::vector<TString> MET_RefTerms  {"Total"};
+  std::vector<TString> resol_plots  {"NPV","mu","sumET"};
+  std::vector<TString> angular_plots  {"phi_glead_MET","phi_gsublead_MET","phi_gg_MET","phi_j_MET","phi_ggj_MET"};
+  std::vector<int> jet_plots  {0,1,2,99}; // 99 value is included for events with >2 jets.
+  std::vector<double> JVT_WP  {0.2,0.4,0.64,0.8,0.92,0.97};
+
+
+
+
+ public:
+
+  void plotBinning(TString component,int& numberBins, double& Minimum,double& Maximum);
+  double getMETcomponent(TString component,xAOD::MissingET* met);
+  bool addMapElement(TString mapName,TString key);
+
+  bool storeResolVar(xAOD::MissingETContainer met,xAOD::JetContainer jets);
+  bool storeETmissScale(xAOD::MissingETContainer met,xAOD::PhotonContainer photonContainer);
+  bool fillDistributionPlots(xAOD::MissingETContainer met,xAOD::JetContainer jets);
+  bool fillResolutionPlots();
+  bool fillETmissScalePlots();
+  bool fillJvtDependencePlots(xAOD::PhotonContainer photonContainer,xAOD::JetContainer jetContainer,xAOD::ElectronContainer electronContainer,xAOD::MuonContainer muonContainer);
+  bool fillAngularPlots(xAOD::MissingETContainer met,xAOD::PhotonContainer photons,xAOD::JetContainer jets);
+
+  ETmissLPNHE() { }
+  ETmissLPNHE(const char *name);
+  virtual ~ETmissLPNHE();
+
+  virtual EL::StatusCode initialize();
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+  virtual EL::StatusCode finalize();
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(ETmissLPNHE, 1);
+};
+
+#endif // HgammaSandbox_ETmissLPNHE_H

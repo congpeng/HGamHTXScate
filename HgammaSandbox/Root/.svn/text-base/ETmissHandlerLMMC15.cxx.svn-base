@@ -1,0 +1,212 @@
+#include "HgammaSandbox/ETmissHandlerLMMC15.h"
+#include <HGamAnalysisFramework/HgammaAnalysis.h>
+
+// MET EDM
+#include "xAODMissingET/MissingET.h"
+#include "xAODMissingET/MissingETContainer.h"
+
+// MET Aux and association map
+#include "xAODMissingET/MissingETAuxContainer.h"
+#include "xAODMissingET/MissingETAssociationMap.h"
+
+// METMaker
+//#include "METUtilities/METMaker.h"
+
+#include "xAODBase/IParticleHelpers.h"
+
+namespace HG {
+
+  /*! \brief Class that
+   *  \author Luis March
+   */
+
+ //______________________________________________________________________________
+  ETmissHandlerLMMC15::ETmissHandlerLMMC15(TString name,double jvtCut)
+    : m_name(name),
+      m_jetJvtCut(jvtCut)
+
+  { }
+
+  //______________________________________________________________________________
+  ETmissHandlerLMMC15::~ETmissHandlerLMMC15()
+  { }
+
+
+  //______________________________________________________________________________
+  EL::StatusCode ETmissHandlerLMMC15::initialize(Config &conf, xAOD::TEvent *event)
+  {
+    // Read in configuration information
+    m_containerName = conf.getStr(m_name+".ContainerName", "MET_Core_AntiKt4EMTopo");
+
+    m_event = event;
+
+    m_metmaker = new met::METMaker("METMaker");   // Defining m_metmaker as METRebuilder tool
+    m_metmaker->setProperty("JetJvtCut",m_jetJvtCut);
+    // Initializating METRebuilder tool
+    if( m_metmaker->initialize()  != EL::StatusCode::SUCCESS){
+      std::cerr << "Cannot intialize METRebuilder" << std::endl;
+      std::cerr << "Exiting... " << std::endl;
+      exit(-1);
+    }
+
+    return EL::StatusCode::SUCCESS;
+  }
+
+
+  //Definition of functions into the ETmissHandler: rawETmiss() & ETmissRebuilder(photons,jets,electrosn,muons)
+  //  - rawETmiss(): Returns a xAOD::MissingET value => Default MET_RefFinal value at the container for CST
+  //  - ETmissRebuilder: Returns a xAOD::MissingET value => Recomputed MET_RefFinal with calibrated objects for TST
+  //______________________________________________________________________________
+  const xAOD::MissingET ETmissHandlerLMMC15::rawETmiss()
+  {
+    // ETmiss MET_RefFinal container
+    // Depending on the input: xAOD or Derived xAOD, the MissingET container name could change
+    // Twiki: https://twiki.cern.ch/twiki/bin/viewauth/AtlasProtected/Run2xAODMissingET#List_of_Missing_ET_container_AN1
+    const xAOD::MissingETContainer *met_container_RefFinal = 0;
+    //if ( m_event->retrieve(met_container_RefFinal, "MET_RefFinal" ).isFailure() ){ // For xAODs
+    if ( m_event->retrieve(met_container_RefFinal, "MET_RefFinalFix" ).isFailure() ){ // For DxAODs
+      EL_CHECK("getRawETmiss", m_event->retrieve(met_container_RefFinal, "MET_RefFinal" ) );
+    }
+    
+    // ETmiss MET_RefFinal: Final computation
+    const xAOD::MissingET *met_RefFinal_CST = (*met_container_RefFinal)["Final"];
+    if (!met_RefFinal_CST) {
+      fatal("Couldn't find MET_RefFinal Final (CST). Exiting." );
+    }
+    
+    return *met_RefFinal_CST;
+  }
+
+
+  const xAOD::MissingET ETmissHandlerLMMC15::ETmissRebuilder(xAOD::PhotonContainer &photonContainer,
+							     xAOD::JetContainer &jetContainer, 
+							     xAOD::ElectronContainer &electronContainer,
+							     xAOD::MuonContainer &muonContainer,
+							     std::string &type)
+  {
+
+    // Retrieving electron, jet, photon and muon original containers
+    const xAOD::ElectronContainer *electrons = 0;
+    if ( m_event->retrieve( electrons, "Electrons" ).isFailure() ){
+      Error("execute()", "Failed to retrieve Electron container. Exiting." );
+      return EL::StatusCode::FAILURE;
+    }
+    const xAOD::JetContainer* jets = 0;
+    if ( m_event->retrieve( jets, "AntiKt4EMTopoJets" ).isFailure() ){
+      Error("execute()", "Failed to retrieve AntiKt4EMTopoJets container. Exiting." );
+      return EL::StatusCode::FAILURE;
+    }
+    const xAOD::PhotonContainer *photons = 0;
+    if ( m_event->retrieve( photons, "Photons" ).isFailure() ){
+      Error("execute()", "Failed to retrieve Photon container. Exiting." );
+      return EL::StatusCode::FAILURE;
+    }
+    const xAOD::MuonContainer* muons = 0;
+    if ( m_event->retrieve( muons, "Muons" ).isFailure() ){
+      Error("execute()", "Failed to retrieve MuonCollection container. Exiting." );
+      return EL::StatusCode::FAILURE;
+    }
+    
+
+    // Retrieve the MET association map: Needed for METMaker tool
+    const char* m_inputMap="METAssoc_AntiKt4EMTopo";
+    const xAOD::MissingETAssociationMap* metMap = 0;
+    if( m_event->retrieve(metMap, m_inputMap).isFailure() ) {
+      Error("Unable to retrieve MissingETAssociationMap: ","MissingETAssociationMap" );
+      return EL::StatusCode::SUCCESS;
+    }
+
+    metMap->resetObjSelectionFlags();
+    // Defining new MissingETContainer for adding METMaker outputs
+    // Create a MissingETContainer with its aux store
+    xAOD::MissingETContainer* outCont = new xAOD::MissingETContainer();
+    xAOD::MissingETAuxContainer* metAuxCont = new xAOD::MissingETAuxContainer();    
+    outCont->setStore(metAuxCont);
+
+    const xAOD::MissingETContainer* coreMet  = 0;
+    std::string coreMetKey = "MET_Core_AntiKt4EMTopo";
+    if( m_event->retrieve(coreMet, coreMetKey).isFailure() ) {
+      Error("Unable to retrieve coreMet: ","coreMetKey" );
+      return EL::StatusCode::SUCCESS;
+    }
+    
+
+    // METMaker 
+    ///////////////////////////////////////////////////
+    // Rebuild ETmiss with calibrated object containers
+    ///////////////////////////////////////////////////
+
+    // Rebuild ETmiss RefGamma term
+    ConstDataVector<xAOD::PhotonContainer> metPhotons(SG::VIEW_ELEMENTS);
+    for(const auto& ph : *&photonContainer) {
+      metPhotons.push_back(ph);
+    }
+    //m_metmaker->rebuildMET("RefGamma", xAOD::Type::Photon, outCont, metPhotons.asDataVector(), metMap) ;
+    m_metmaker->rebuildMET("RefGamma", xAOD::Type::Photon, outCont, &photonContainer, metMap) ;
+    // Rebuild ETmiss RefEle term
+    ConstDataVector<xAOD::ElectronContainer> metElectrons(SG::VIEW_ELEMENTS);
+    for(const auto& el : *&electronContainer) {
+      metElectrons.push_back(el);
+    }
+    m_metmaker->rebuildMET("RefEle",                       // name of electrons in outCont container
+			   xAOD::Type::Electron,           // telling the rebuilder that this is electron met
+			   outCont,                        // filling this met container 
+			   //metElectrons.asDataVector(),    // using these electrons that accepted our cuts
+			   &electronContainer,    // using these electrons that accepted our cuts
+			   metMap) ;                       // and this association map
+    // Rebuild ETmiss RefTau term - Not taking into account Taus for MET rebuilder
+    //m_metmaker->rebuildMET("RefTau", xAOD::Type::Tau, outCont, taus_all, metMap) ;
+    // Rebuild ETmiss Muons term
+    ConstDataVector<xAOD::MuonContainer> metMuons(SG::VIEW_ELEMENTS);
+    for(const auto& mu : *&muonContainer) {
+      metMuons.push_back(mu);
+    }
+    //m_metmaker->rebuildMET("Muons", xAOD::Type::Muon, outCont, metMuons.asDataVector(), metMap) ;
+    m_metmaker->rebuildMET("Muons", xAOD::Type::Muon, outCont, &muonContainer, metMap) ;
+    // Jet and Soft Terms
+    //m_metmaker->rebuildJetMET("RefJet", "SoftClus", "PVSoftTrk", outCont, &jetContainer, coreMet, metMap, false) ;
+    m_metmaker->rebuildJetMET("RefJet", "SoftClus", "PVSoftTrk", outCont, &jetContainer, coreMet, metMap, true) ; // Play with jetContainer -> raw, calib & selected
+
+    m_metmaker->buildMETSum("FinalClus", outCont, MissingETBase::Source::LCTopo); // Rebuild final ETmiss value, taking into account all terms: CST
+    //m_metmaker->buildMETSum("FinalClus", outCont, MissingETBase::Source::EMTopo); // Rebuild final ETmiss value, taking into account all terms: CST
+    m_metmaker->buildMETSum("FinalTrk", outCont, MissingETBase::Source::Track); // Rebuild final ETmiss value, taking into account all terms: TST
+
+
+
+    // Recording event info into new MissingETContainer
+    if( m_event->record(metAuxCont, "MET_MyRefFinalAux.").isFailure() ) {
+      Error("Unable to record MissingETAuxContainer: " , "MissingETAuxContainer");
+      return StatusCode::SUCCESS;
+    }
+    if( m_event->record(outCont, "MET_MyRefFinal").isFailure() ) {
+      Error("Unable to record MissingETContainer: " ,"MissingETContainer");
+      return StatusCode::SUCCESS;
+    }
+    
+    // Getting access to new MissingETContainer from METRebuilder (TST)
+    const xAOD::MissingETContainer *met_reb = 0;
+    if ( m_event->retrieve(met_reb, "MET_MyRefFinal").isFailure() ){
+      fatal("Failed to retrieve METRebuilder container. Exiting." );
+    }
+    // Getting access to new MissingET object from METRebuilder (TST)
+    const xAOD::MissingET *met_rebuilder = (*met_reb)["FinalTrk"];
+    if (!met_rebuilder) {
+      fatal("Couldn't find METRebuilder Final. Exiting." );
+    }
+
+    // Getting access to new MissingET object from METRebuilder (CST)
+    const xAOD::MissingET *met_rebuilder_CST = (*met_reb)["FinalClus"];
+    if (!met_rebuilder_CST) {
+      fatal("Couldn't find METRebuilder Final. Exiting." );
+    }
+
+
+    if ( type == "CST" ) 
+      return *met_rebuilder_CST;           // return MissingET info for CST
+    else if ( type == "TST" ) 
+      return *met_rebuilder;               // return MissingET info for TST
+    else
+      return *met_rebuilder;               // return MissingET info for TST
+  }
+  
+}// namespace HG

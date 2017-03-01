@@ -1,0 +1,616 @@
+#include "HgammaSandbox/PhotonFakeRate.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "xAODTruth/TruthEventContainer.h"
+#include "HGamAnalysisFramework/TruthUtils.h"
+#include "xAODEgamma/EgammaxAODHelpers.h"
+#include "xAODTruth/xAODTruthHelpers.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(PhotonFakeRate)
+
+// we will define a method to find if the truth particle comes from an hadron
+const xAOD::TruthParticle *PhotonFakeRate::findHadron(const xAOD::TruthParticle *ptcl) {
+  // we define the pdgId of the truth particle
+  int ID = ptcl->pdgId();
+  // we found an hadron
+  if (MC::PID::isHadron(ID)) return ptcl;
+  // it has no parents
+  if (ptcl->nParents()==0) {
+    std::cout << "I got no parents! AM I an orphan??" << std::endl;
+    return 0;
+  }
+  // we want to check the chain of the non hadron/orphan particle
+  const xAOD::TruthParticle *parent = ptcl->parent(0);
+  // we define the pdgId of the parent
+  int parentID = parent->pdgId();
+  // if we have lepton / photon it will call the method again
+  if (MC::PID::isLepton(parentID)||MC::PID::isPhoton(parentID)) return findHadron(parent);
+  // if we have an hadron i nthe chain it will return the hadron from the chain
+  if (MC::PID::isHadron(parentID)) return parent;
+  //HG::fatal(Form("We got HERE! The parent of the particle with ID %d has ID=%d",ID,parentID));
+  // if we have found nothing we return 0 like in the case of no parents
+  return 0;
+}
+
+// use to find photon of stable truth electron - we deifne two lists - Ph not from Had and El
+const xAOD::TruthParticle *PhotonFakeRate::findConvTruthPhoton(const xAOD::TruthParticle *ptcl) {
+  if ( MC::PID::isPhoton(ptcl->pdgId()) && HG::notFromHadron(ptcl) ) return ptcl;
+  if ( MC::PID::isElectron(ptcl->pdgId()) ) return findConvTruthPhoton(ptcl->parent(0));
+  return nullptr;
+}
+
+// we will define a method to find if the truth particle comes from a photon
+const xAOD::TruthParticle *PhotonFakeRate::findPhoton(const xAOD::TruthParticle *ptcl) {
+  // we define the pdgId of the truth particle
+  int ID = ptcl->pdgId();
+  // we found a photon
+  if (MC::PID::isPhoton(ID)) return ptcl;
+  // it has no parents
+    if (ptcl->nParents()==0) {
+    std::cout << "I got no parents! AM I an orphan??" << std::endl;
+    return 0;
+  }
+  // we want to check the chain of the non photon/orphan particle
+  const xAOD::TruthParticle *parent = ptcl->parent(0);
+  // we define the pdgId of the parent
+  int parentID = parent->pdgId();
+  // if we have lepton it will call the method again
+  if (MC::PID::isLepton(parentID)) return findPhoton(parent);
+  // if we have a photon i nthe chain it will return the photon
+  if (MC::PID::isPhoton(parentID)) return parent;
+  // if we have found nothing we return 0 like in the case of no parents
+  return 0;
+}
+
+PhotonFakeRate::PhotonFakeRate(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+PhotonFakeRate::~PhotonFakeRate()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+EL::StatusCode PhotonFakeRate::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  // number of tight photons
+  histoStore()->createTH1F("Ntight_photons",10,-0.5,9.5,";#it{N}_{tight-photons}");
+  // number of isolated photons
+  histoStore()->createTH1F("Nisolated_photons",10,-0.5,9.5,";#it{N}_{isolated-photons}");
+  // number of all photons
+  histoStore()->createTH1F("Nphotons",10,-0.5,9.5,";#it{N}_{photons}");
+  // number of jets
+  histoStore()->createTH1F("Njets",10,-0.5,9.5,";#it{N}_{jets}");
+  // number of Pi0
+  histoStore()->createTH1F("NPi0",10,-0.5,9.5,";#it{N}_{#pi^{0}}");
+  // Pt of first tight photon
+  histoStore()->createTH1F("PtTightPhoton0",50,0,500,";Pt [GeV]");
+  // Pt of first jet
+  histoStore()->createTH1F("PtJets0",50,0,500,";Pt [GeV]");
+  // number of photons, tight photons, jets and pi0 with 25GeV
+  histoStore()->createTH1F("Nphotons25",10,-0.5,9.5,";#it{N}_{photons25}");
+  histoStore()->createTH1F("Njets25",10,-0.5,9.5,";#it{N}_{jets25}");
+  histoStore()->createTH1F("NPi025",10,-0.5,9.5,";#it{N}_{#pi^{0}25}");
+  histoStore()->createTH1F("NPi020",10,-0.5,9.5,";#it{N}_{#pi^{0}20}");
+  // the pi0 momentum over the parent parton momentum - "Z" of the pion for one faking and for all
+  histoStore()->createTH1F("Pi0zAll",100,-10,10,";Z_{#pi^{0}}");
+  histoStore()->createTH1F("Pi0zFakePh",100,-10,10,";Z_{#pi^{0}}");
+  // number of truth photons
+  histoStore()->createTH1F("Ntruth_photons",10,-0.5,9.5,";#it{N}_{truth-photons}");
+  // deltaR between the reco photons anf the truth photons
+  histoStore()->createTH1F("minDR",100,0,0.2,";DRTruthReco");
+  // Plot the Pt of the fake photons for eta<2.4
+  histoStore()->createTH1F("PtFakePhoton",50,0,500,";Pt [GeV]");
+  // Plot the Pt of the fake photons (coming from Pi0) for eta<2.4
+  histoStore()->createTH1F("PtFakePhotonFromPi0",50,0,500,";Pt [GeV]");
+  // Plot the Pt of the fake photons (coming from e from B) for eta<2.4
+  histoStore()->createTH1F("PtFakePhotonFromElB",50,0,500,";Pt [GeV]");
+  // Plot the Pt of the fake photons (coming from hadron) for eta<2.4 
+  histoStore()->createTH1F("PtFakePhotonFromHad",50,0,500,";Pt [GeV]");
+  // Plot the Pt of the fake photons (coming from quark) for eta<2.4 
+  histoStore()->createTH1F("PtFakePhotonFromQuark",50,0,500,";Pt [GeV]");
+  // Plot the Pt,Eta,Phi of the fake photons from Pi0
+  histoStore()->createTH1F("PtFakePhotonPi0",100,0,500,";Pt [GeV]");
+  histoStore()->createTH1F("EtaFakePhotonPi0",100,-3,3,";Eta");
+  histoStore()->createTH1F("PhiFakePhotonPi0",100,-3,3,";Phi");
+  // Plot the Pt,Eta,Phi of the fake photons from others
+  histoStore()->createTH1F("PtFakePhotonOther",100,0,500,";Pt [GeV]");
+  histoStore()->createTH1F("EtaFakePhotonOther",100,-3,3,";Eta");
+  histoStore()->createTH1F("PhiFakePhotonOther",100,-3,3,";Phi");
+  // plot the pdgId of that other
+  histoStore()->createTH1F("PdgIdOther",1000,0,1000,";PdgId");
+  // Plot the Pt of the Pi0 that faked a photon
+  histoStore()->createTH1F("PtPi0FakedPhoton",20,0,100,";Pt [GeV]");
+  // Plot the Pt of all the Pi0 in all the events
+  histoStore()->createTH1F("PtPi0All",20,0,100,";Pt [GeV]");
+  // Plot the TProfile of the fake rate over the Z
+  histoStore()->createTProfile("tight_fake_rate_vs_pi0Z",{-2,-1,-0.8,-0.6,-0.5,-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,0.3,0.4,0.5,0.6,0.8,1,2},
+                               ";#pi^{0} z;tight photon fake rate");
+  // Plot the TProfile of the fake rate over the Pt
+//  histoStore()->createTProfile("tight_fake_rate_vs_pi0pT",20,0,100,";#pi^{0} #it{p}_{T};tight non-isolated photon fake rate");
+  histoStore()->createTProfile("tight_fake_rate_vs_pi0pT",{0,5,10,15,20,25,30,40,45,50,60,100},
+                               ";#pi^{0} #it{p}_{T};tight photon fake rate");
+  histoStore()->createTProfile("tight_fake_rate_vs_pi+pT",{0,5,10,15,20,25,30,40,45,50,60,100},
+                               ";#pi^{+} #it{p}_{T};tight photon fake rate");
+  histoStore()->createTProfile("tight_fake_rate_vs_BpT",{0,5,10,15,20,25,30,40,45,50,60,100},
+                               ";B #it{p}_{T};tight photon fake rate");
+  histoStore()->createTProfile("tight_fake_rate_vs_RecoJetPT",{0,5,10,15,20,25,30,40,45,50,60,100},
+                               ";RecoJet #it{p}_{T};tight photon fake rate");
+  histoStore()->createTProfile("tight_fake_rate_vs_RecoJetETA",{-3,-2.5,-2,-1.7,-1.5,-1,-0.7,-0.5,0,0.5,0.7,1,1.5,1.7,2,2.5,3},
+                               ";RecoJet Eta;tight photon fake rate");
+  histoStore()->createTProfile("tight_fake_rate_vs_PhotonPT",{0,5,10,15,20,25,30,40,45,50,60,100},
+                               ";All Photons #it{p}_{T};tight photon fake rate");
+  // Plot the Pt of the fake photons over the Pt of the origin particle
+  histoStore()->createTH1F("PtFakeOverOriginPi0",50,0,5,";RatioOfPt");
+  histoStore()->createTH1F("PtFakeOverOriginHad",50,0,5,";RatioOfPt");
+  // Plot the 2D of Pt fake and Pt origin
+  histoStore()->createTH2F("PtFakeVrsOriginPi0",30,0.,300.,30,0.,300.,";PtFake [GeV]");
+  histoStore()->createTH2F("PtFakeVrsOriginHad",30,0.,300.,30,0.,300.,";PtFake [GeV]");
+  // For Classifier - Plot the Pt of the fake photons over the Pt of the origin particle
+  histoStore()->createTH1F("PtFakeOverOriginPi0Class",50,0,5,";RatioOfPt");
+  histoStore()->createTH1F("PtFakeOverOriginHadClass",50,0,5,";RatioOfPt");
+  // For Classifier - Plot the 2D of Pt fake and Pt origin
+  histoStore()->createTH2F("PtFakeVrsOriginPi0Class",30,0.,300.,30,0.,300.,";PtFake [GeV]");
+  histoStore()->createTH2F("PtFakeVrsOriginHadClass",30,0.,300.,30,0.,300.,";PtFake [GeV]");
+  // Plot the PdgId of the truth particle
+  histoStore()->createTH1F("PdgIdTruth",1000,0,1000,";PdgId"); 
+  //get the default value from the config file - set to 0.1 now
+  m_distTrue = config()->getNum("MinDRRecoTruth");
+  // set the m_NfakePhotons counter to 0
+  m_NfakePhotons = 0;
+  // set the m_NtruthDR01 counter to 0
+  m_NtruthDR01 = 0;
+  // set the m_NtruthDR01ParPt15 counter to 0
+  m_NtruthDR01ParPt15 = 0;
+  // make a histogram to know how many truth particles I had in each event
+  histoStore()->createTH1F("NTruthParticlesInDR01",20,0,20,";#it{N}_{truth-paricles}");
+  // make a histogram to know how many truth particles I had in each event with Pt of parent > 15GeV
+  histoStore()->createTH1F("NTruthParticlesInDR01ParPt15",20,0,20,";#it{N}_{truth-paricles with parent Pt > 15GeV}");
+  // make the histogram for categorization
+  histoStore()->createTH1F("FakePhotonCategory",10,0,10);
+  TAxis *xAxis = histoStore()->getTH1F("FakePhotonCategory")->GetXaxis();
+  std::vector<TString> cats({"Unmatched","Unknown","#pi^{0}","e from B","OtherHad","Photon"});
+  for (size_t i=0;i<cats.size();i++) xAxis->SetBinLabel(i+1,cats[i]); 
+  // make the histogram for Pi cathgorization - 111,211
+  histoStore()->createTH1F("PiCategory",7,0,7);
+  TAxis *xAxisn = histoStore()->getTH1F("PiCategory")->GetXaxis();
+  std::vector<TString> catsn({"AllTruth","#pi^{0}","#pi^{0} 25","#pi^{+}","#pi^{+} 25", "B","B 25"});
+  for (size_t i=0;i<catsn.size();i++) xAxisn->SetBinLabel(i+1,catsn[i]);
+  // fraction of events have at least one pi0 with pT>20,25,30
+  histoStore()->createTH1F("EvtCategory",13,0,13);
+  TAxis *xAxisnn = histoStore()->getTH1F("EvtCategory")->GetXaxis();
+  std::vector<TString> catsnn({"Nevents","Nevt#pi^{0}", "Nevt#pi^{0} 20", "Nevt#pi^{0} 25", "Nevt#pi^{0} 30", "Nevt#pi^{+}", "Nevt#pi^{+} 20", "Nevt#pi^{+} 25", "Nevt#pi^{+} 30", "NevtB", "NevtB 20", "NevtB 25", "NevtB 30"});
+  for (size_t i=0;i<catsnn.size();i++) xAxisnn->SetBinLabel(i+1,catsnn[i]);
+
+
+  return EL::StatusCode::SUCCESS;
+}
+
+EL::StatusCode PhotonFakeRate::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+  const xAOD::TruthEventContainer* truthE=0;
+  if (!event()->retrieve(truthE,"TruthEvent")) {
+  
+  }
+  const xAOD::TruthEvent* mcEvent=*(truthE->begin());
+  double weightMC = mcEvent->weights().at(0);
+
+  // all the jets will be here
+//  xAOD::JetContainer jets_all = jetHandler()->getCorrectedContainer();
+//  xAOD::JetContainer jets_all25(SG::VIEW_ELEMENTS);
+//  for( xAOD::Jet *j25 : jets_all ) {
+//    if (j25->pt()/HG::GeV > 25.)
+//      jets_all25.push_back(j25);
+//  }
+
+  // truth jets wil be here
+  const xAOD::JetContainer *truthJets = 0;
+  if (event()->retrieve(truthJets,"AntiKt4TruthJets").isFailure() )
+    HG::fatal("Cannot access AntiKt4TruthJets");
+  std::vector<const xAOD::Jet*> truthJets20;
+  for ( const xAOD::Jet *trjt : *truthJets ) {
+    if (trjt->pt()/HG::GeV > 20. && trjt->eta() && fabs(trjt->eta()) < 2.4) truthJets20.push_back(trjt);
+  }
+
+  // all the photons will be here now
+  xAOD::PhotonContainer allPhotons = photonHandler()->getCorrectedContainer(); 
+  xAOD::PhotonContainer allPhotons25(SG::VIEW_ELEMENTS);
+  for( xAOD::Photon *ph25 : allPhotons ) {
+    if (ph25->pt()/HG::GeV > 25.)
+      allPhotons25.push_back(ph25);
+  }
+  // tight photons - maybe isol?
+//  xAOD::PhotonContainer Prephotons = photonHandler()->applySelection(allPhotons);
+  xAOD::PhotonContainer photons = photonHandler()->applySelection(allPhotons); 
+//  xAOD::PhotonContainer photons(SG::VIEW_ELEMENTS);
+  xAOD::PhotonContainer photonsIso(SG::VIEW_ELEMENTS);
+  xAOD::PhotonContainer photonsFake(SG::VIEW_ELEMENTS);
+  // add isolation
+  double topo_cut = 6.0, trck_cut = 2.6;
+//  for( xAOD::Photon *phtIso : Prephotons ) {
+  for( xAOD::Photon *phtIso : photons ) {
+    double topoetcone40 = phtIso->isolationValue(xAOD::Iso::topoetcone40)/HG::GeV;
+    double ptcone20 = phtIso->isolationValue(xAOD::Iso::ptcone20)/HG::GeV;
+    bool passTopoCut = (topoetcone40 < topo_cut);
+    bool passTrckCut = (    ptcone20 < trck_cut);
+    bool  passIsoCut = ( passTopoCut && passTrckCut );
+    if (passIsoCut)
+//      photons.push_back(phtIso);
+      photonsIso.push_back(phtIso);
+  }
+  
+  // get the truth particles
+  const xAOD::TruthParticleContainer *truthPtcls = 0; 
+  if ( event()->retrieve(truthPtcls, "TruthParticle" ).isFailure() )
+    HG::fatal("Cannot access TruthParticle");
+  
+  // get truth photons and truth electrons
+  std::vector<const xAOD::TruthParticle*> truthPhotons;
+  std::vector<const xAOD::TruthParticle*> truthElecs;
+  std::vector<const xAOD::TruthParticle*> Pi0pT20;
+  std::vector<const xAOD::TruthParticle*> Pi0pT25;
+  std::vector<const xAOD::TruthParticle*> Pi0All;
+  for ( const xAOD::TruthParticle *ptcl : *truthPtcls ) {
+    if (ptcl->pdgId()==111) {
+      Pi0All.push_back(ptcl);
+      if (ptcl->pt()/HG::GeV > 25. && ptcl->eta() && fabs(ptcl->eta()) < 2.4)
+        Pi0pT25.push_back(ptcl);
+      if (ptcl->pt()/HG::GeV > 20. && ptcl->eta() && fabs(ptcl->eta()) < 2.4)
+        Pi0pT20.push_back(ptcl);
+    }
+    if ( HG::isGoodTruthPhoton(ptcl) )
+      truthPhotons.push_back(ptcl);
+    else if ( HG::isGoodTruthElectron(ptcl) )
+      truthElecs.push_back(ptcl);
+  }
+
+  // plot the number of tight photons
+//  histoStore()->fillTH1F("Ntight_photons",Prephotons.size());
+  histoStore()->fillTH1F("Ntight_photons",photons.size());
+  // plot the number of isolated photons
+//  histoStore()->fillTH1F("Nisolated_photons",photons.size());
+  histoStore()->fillTH1F("Nisolated_photons",photonsIso.size());
+  // plot the number of photons
+  histoStore()->fillTH1F("Nphotons",allPhotons.size());
+  // plot the number of jets
+//  histoStore()->fillTH1F("Njets",jets_all.size());
+  // plot the number of pi0
+  histoStore()->fillTH1F("NPi0",Pi0All.size());
+  // plot the pt of the first tight photon    
+  if (photons.size()>=1)
+    histoStore()->fillTH1F("PtTightPhoton0",photons[0]->pt()/HG::GeV);
+  // plot the pt of the first jet 
+//  if (jets_all.size()>=1)
+//    histoStore()->fillTH1F("PtJets0",jets_all[0]->pt()/HG::GeV);
+  // plot the number of photons, tight photons, jets and pi0 with 25GeV
+  histoStore()->fillTH1F("Nphotons25",allPhotons25.size());
+//  histoStore()->fillTH1F("Njets25",jets_all25.size());
+  histoStore()->fillTH1F("NPi025",Pi0pT25.size());
+  histoStore()->fillTH1F("NPi020",Pi0pT20.size());
+
+  // plot the number of truth photons
+  histoStore()->fillTH1F("Ntruth_photons",truthPhotons.size()); 
+  // plot the number of events
+  histoStore()->fillTH1F("EvtCategory",0);
+
+  // we initiate the higherst Pt to find later the highest pt
+  double HighestPtPi0 = -999.;
+  double HighestPdgID = -999.;
+  // We will want to find the highest pt pion
+  const xAOD::TruthParticle *highpi0=0;
+
+  // ********************************
+  // Here I'll run on the jets to find the fake rate for reco jets
+  // ********************************
+//  for (auto Jets:jets_all) {
+    // fill the fake rate details
+//    bool match = HG::minDR(Jets,photons) < 0.1;
+//    histoStore()->fillTProfile("tight_fake_rate_vs_RecoJetPT",Jets->pt()/HG::GeV,match);
+//    histoStore()->fillTProfile("tight_fake_rate_vs_RecoJetETA",Jets->eta(),match);
+//  } // RecoJets
+
+  // ********************************
+  // Here I'll run on all the photons to find the fake rate for all the photons
+  // ********************************
+  for (auto ph:allPhotons) {
+    // check if we match a fake photon
+    bool match = HG::minDR(ph,photons) < 0.1;
+    histoStore()->fillTProfile("tight_fake_rate_vs_PhotonPT",ph->pt()/HG::GeV,match);
+  } // end of the "all photons"
+
+  // ********************************
+  // Here I'll do the other way around and run on all the truth particles
+  // ********************************
+  for (auto part:*truthPtcls) {
+    // I'll count all the truth particles in all the events
+    histoStore()->fillTH1F("PiCategory",0);
+    // I'll check the closest truth jet
+    double DRJetTruth = 999.;
+    const xAOD::Jet *closestJet = 0;
+    for (auto jeti:truthJets20) {
+      double DRtmp = HG::DR(part,jeti);
+      if (DRtmp < DRJetTruth) {
+        DRJetTruth = DRtmp;
+        closestJet = jeti;
+      } 
+    } // end of truthJets loop 
+    // I'll check if it is a Pi0
+    if (part->pdgId()==111) {
+      if (part->nParents()>0)
+        histoStore()->fillTH1F("Pi0zAll",(part->pt()/HG::GeV)/(part->parent(0)->pt()/HG::GeV));
+      // check if we match a fake photon
+      bool match = HG::minDR(part,photons) < 0.1;
+      histoStore()->fillTProfile("tight_fake_rate_vs_pi0pT",part->pt()/HG::GeV,match);
+      if (closestJet && part->pt()/HG::GeV>20. && fabs(part->eta())<2.4) histoStore()->fillTProfile("tight_fake_rate_vs_pi0Z",(part->pt()/HG::GeV)/(closestJet->pt()/HG::GeV),match);
+      histoStore()->fillTH1F("PtPi0All",part->pt()/HG::GeV);
+      histoStore()->fillTH1F("PiCategory",1);
+      if (part->pt()/HG::GeV > 25.) histoStore()->fillTH1F("PiCategory",2);
+      if (highpi0) {
+        if (part->pt()/HG::GeV > HighestPtPi0) {
+         highpi0 = part;
+         HighestPtPi0 = part->pt()/HG::GeV;
+         HighestPdgID = 111;
+         }
+      } //finish the found of highpi0
+      else {
+      highpi0 = part;
+      HighestPtPi0 = part->pt()/HG::GeV;
+      HighestPdgID = 111;
+      }
+    } // finish if pi0
+    else if (part->pdgId()==211) {
+      // check if we match a fake photon
+      bool match = HG::minDR(part,photons) < 0.1;
+      histoStore()->fillTProfile("tight_fake_rate_vs_pi+pT",part->pt()/HG::GeV,match);
+      histoStore()->fillTH1F("PiCategory",3);
+      if (part->pt()/HG::GeV > 25.) histoStore()->fillTH1F("PiCategory",4);
+      if (highpi0) {
+        if (part->pt()/HG::GeV > HighestPtPi0) {
+         highpi0 = part;
+         HighestPtPi0 = part->pt()/HG::GeV;
+         HighestPdgID = 211;
+         }
+      } //finish the found of highpi0
+      else {
+      highpi0 = part;
+      HighestPtPi0 = part->pt()/HG::GeV;
+      HighestPdgID = 211;
+      }
+    } // finish if pi+
+    else if (part->pdgId()>500) {
+      // check if we match a fake photon
+      bool match = HG::minDR(part,photons) < 0.1;
+      histoStore()->fillTProfile("tight_fake_rate_vs_BpT",part->pt()/HG::GeV,match);
+      histoStore()->fillTH1F("PiCategory",5);
+      if (part->pt()/HG::GeV > 25.) histoStore()->fillTH1F("PiCategory",6);
+      if (highpi0) {
+        if (part->pt()/HG::GeV > HighestPtPi0) {
+         highpi0 = part;
+         HighestPtPi0 = part->pt()/HG::GeV;
+         HighestPdgID = 511;
+         }
+      } //finish the found of highpi0
+      else {
+      highpi0 = part;
+      HighestPtPi0 = part->pt()/HG::GeV;
+      HighestPdgID = 511;
+      }
+    } // finish if B
+  } //finish all truth particles in the event
+
+  // I now have the highest Pt Pi0/Pi+/B per event and I can use it
+  if (highpi0) {
+    if (HighestPdgID==111) {
+      histoStore()->fillTH1F("EvtCategory",1);
+      if (HighestPtPi0 > 30.) histoStore()->fillTH1F("EvtCategory",4);
+      else if (HighestPtPi0 > 25.) histoStore()->fillTH1F("EvtCategory",3);
+      else if (HighestPtPi0 > 20.) histoStore()->fillTH1F("EvtCategory",2);
+    }
+    if (HighestPdgID==211) {
+      histoStore()->fillTH1F("EvtCategory",5);
+      if (HighestPtPi0 > 30.) histoStore()->fillTH1F("EvtCategory",8);
+      else if (HighestPtPi0 > 25.) histoStore()->fillTH1F("EvtCategory",7);
+      else if (HighestPtPi0 > 20.) histoStore()->fillTH1F("EvtCategory",6);
+    }
+    if (HighestPdgID==511) {
+      histoStore()->fillTH1F("EvtCategory",9);
+      if (HighestPtPi0 > 30.) histoStore()->fillTH1F("EvtCategory",12);
+      else if (HighestPtPi0 > 25.) histoStore()->fillTH1F("EvtCategory",11);
+      else if (HighestPtPi0 > 20.) histoStore()->fillTH1F("EvtCategory",10);
+    }
+  } // if I had Pi0 at all in the event
+
+  // ********************************
+  // loop over the reco good photons - I start to deal with each reco photon
+  // *********************************
+  for (auto Rphoton:photons) {
+    // Getting the particle in truth that cause that reco photon
+    const xAOD::TruthParticle *tru_org = xAOD::TruthHelpers::getTruthParticle(*Rphoton);
+    // minDR - is the min DR between the reco photon and any of the truth photons 
+    // will loop over all the truth photons and return DR to the one that is the closest to the reco photons
+    double minDR = HG::minDR( Rphoton, truthPhotons);
+    // now I check if it is a real photon with truthPhoton in th defined DR 
+    if (minDR < m_distTrue) {
+      // I have a real photons - reco is coming from truth phton - I'll plot the DR and go out
+      histoStore()->fillTH1F("minDR",minDR); 
+      continue;  
+    }
+    // Now we have reco photon with no truth good photon is DR<0.1 - let's check if it has an electron coming from converted photon
+    // Seem like MadGraph produces off shell photons that decay within a few microns of the production vetex: y*->ee
+    bool isConvTruthElec = false;
+    for ( const auto elec : truthElecs ) {
+      // if the electron match the reco photon, see if it has a parent photon
+      if (elec->p4().DeltaR(Rphoton->p4())<m_distTrue*1.5) {
+        const xAOD::TruthParticle *gam = findConvTruthPhoton(elec);
+        if (gam!=nullptr) {
+          isConvTruthElec=true;
+          break;
+        }
+      }
+    }
+    // if the current reco photon match a real conv truth photon it's not a fake photon. Go to the next reco photon.
+    if (isConvTruthElec == true) continue;
+    // ************************************************
+    // I have a fake photon!!!! Increase the NfakePhotons in 1 for the fake photns we have just found
+    // ************************************************
+    m_NfakePhotons ++ ;
+//    std::cout << "We now have a fake photons and we want to check its properties!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+    // will print the properties of the fake photons and their DR
+    //photonHandler() -> printPhoton (Rphoton , Form("Fake photon minDR=%.3f", minDR ));
+    // plot the Pt of the fake photons with for eta<2.4
+    if (fabs(Rphoton->eta()) < 2.4) histoStore()->fillTH1F("PtFakePhoton",Rphoton->pt()/HG::GeV);
+    // We will want to find the fake photon origin! Let's set the origin pointer to the source
+    const xAOD::TruthParticle *origin=0;
+    // We would want to compare to the previous DR and DPt to choose so we need to save the previous
+    double OLDDRTruthPh = 999.;
+    double OLDDPtruthPh = -999.;
+    // we also need to define the DR and the DPt we will use
+    double DRTruthPh = 999.;
+    double DPtruthPh = -999.;
+    // set the m_NtruthDR01 and m_NtruthDR01ParPt15 counter to 0 for every fake photon
+    m_NtruthDR01 = 0;
+    m_NtruthDR01ParPt15 = 0;
+    // ******************************
+    // loop overall the truth particles
+    // *******************************
+    for (auto particle:*truthPtcls){
+      // check the truth particles are stable
+      if (! HG::isStable(particle)) continue; 
+      // Define DR between the reco photon and the stable truth particles
+      DRTruthPh = Rphoton->p4().DeltaR(particle->p4());
+      // we will remove now truth particles which are too far from the fake photon
+      if (DRTruthPh > 0.1) continue;
+      // we now have close by truth particle - we want to "know" it !!!!!!!!!!!! we increas m_NtruthDR01 in 1
+      m_NtruthDR01 ++ ;
+      // we now want to count only particles with a parent with more than 15GeV Pt
+      if (particle->parent(0)->pt()/HG::GeV > 15.) m_NtruthDR01ParPt15 ++ ;
+      // plot the pdgId of the truth particle with less than 0.1 distance
+      histoStore()->fillTH1F("PdgIdTruth",fabs(particle->pdgId()));
+      // ************ what can be the origin? hadron? quark? photn? ****************
+      // we check now if for that truth particle we have an hadron/quark/photon in the chain
+      const xAOD::TruthParticle *hadron = findHadron(particle);
+      const xAOD::TruthParticle *tru_photon = findPhoton(particle);
+      // We will want to find the truth particle origin! Let's set the origin pointer to the source
+      const xAOD::TruthParticle *ptclorigin=0;
+      // if it has hadron in its chain, we print the details now
+      if (hadron) {
+        DPtruthPh = hadron->pt()/HG::GeV - Rphoton->pt()/HG::GeV;
+        ptclorigin = hadron;
+      }
+      else if (tru_photon) { 
+        DPtruthPh = tru_photon->pt()/HG::GeV - Rphoton->pt()/HG::GeV;
+        ptclorigin = tru_photon;
+      }
+      else {
+        DPtruthPh = particle->parent(0)->pt()/HG::GeV - Rphoton->pt()/HG::GeV;
+      }
+      // ******** we now want to choose which truth is the real origin of the fake photon *********
+      if (origin) {
+        // if there is already an origin we compare if that is the same one - then it is easy
+        if (origin==ptclorigin) continue;
+        // now we have a new optional origin - check DR and DPt
+        if (DPtruthPh < -10) continue;
+        if ((DRTruthPh > OLDDRTruthPh) && (DPtruthPh < OLDDPtruthPh)) continue;
+        else {
+          origin = ptclorigin;
+          OLDDRTruthPh = DRTruthPh;
+          OLDDPtruthPh = DPtruthPh;
+        }
+      } // end of the origin dilema
+      else {
+        origin = ptclorigin;
+        OLDDRTruthPh = DRTruthPh;
+        OLDDPtruthPh = DPtruthPh;
+      }
+    }// end of truth photon loop
+    // now we want to fill i nthe hist how many truth particles I had for that fake photon
+    histoStore()->fillTH1F("NTruthParticlesInDR01",m_NtruthDR01);
+    histoStore()->fillTH1F("NTruthParticlesInDR01ParPt15",m_NtruthDR01ParPt15);
+    // ************ It's time for the big classification !! **************
+    if      (origin==0) {
+      histoStore()->fillTH1F("FakePhotonCategory",0);
+      histoStore()->fillTH1F("PtFakePhotonOther",Rphoton->pt()/HG::GeV);
+      histoStore()->fillTH1F("EtaFakePhotonOther",Rphoton->eta());
+      histoStore()->fillTH1F("PhiFakePhotonOther",Rphoton->phi());
+      continue;
+    }
+    else if (origin->pdgId()==111) {
+      if (origin->nParents()>0) 
+        histoStore()->fillTH1F("Pi0zFakePh",(origin->pt()/HG::GeV)/(origin->parent(0)->pt()/HG::GeV));
+      histoStore()->fillTH1F("FakePhotonCategory",2);
+      histoStore()->fillTH1F("PtFakeOverOriginPi0",(Rphoton->pt())/(origin->pt()));
+      histoStore()->fillTH2F("PtFakeVrsOriginPi0", Rphoton->pt()/HG::GeV, origin->pt()/HG::GeV);
+      histoStore()->fillTH1F("PtPi0FakedPhoton",origin->pt()/HG::GeV);
+      if (fabs(Rphoton->eta()) < 2.4) histoStore()->fillTH1F("PtFakePhotonFromPi0",Rphoton->pt()/HG::GeV);
+      if (origin->pt()>20. && origin->eta() && fabs(origin->eta()) < 2.4){
+        histoStore()->fillTH1F("PtFakePhotonPi0",Rphoton->pt()/HG::GeV);
+        histoStore()->fillTH1F("EtaFakePhotonPi0",Rphoton->eta());
+        histoStore()->fillTH1F("PhiFakePhotonPi0",Rphoton->phi());
+      }
+      else {
+        histoStore()->fillTH1F("PtFakePhotonOther",Rphoton->pt()/HG::GeV);
+        histoStore()->fillTH1F("EtaFakePhotonOther",Rphoton->eta());
+        histoStore()->fillTH1F("PhiFakePhotonOther",Rphoton->phi());
+        histoStore()->fillTH1F("PdgIdOther",fabs(origin->pdgId()));
+      }
+    }
+    else if (fabs(origin->pdgId())>500) { 
+      histoStore()->fillTH1F("FakePhotonCategory",3);
+      histoStore()->fillTH1F("PtFakePhotonOther",Rphoton->pt()/HG::GeV);
+      histoStore()->fillTH1F("EtaFakePhotonOther",Rphoton->eta());
+      histoStore()->fillTH1F("PhiFakePhotonOther",Rphoton->phi());
+      histoStore()->fillTH1F("PdgIdOther",fabs(origin->pdgId()));
+      if (fabs(Rphoton->eta()) < 2.4) histoStore()->fillTH1F("PtFakePhotonFromElB",Rphoton->pt()/HG::GeV);
+    }
+    else if (fabs(origin->pdgId())>100) {
+      histoStore()->fillTH1F("FakePhotonCategory",4);
+      histoStore()->fillTH1F("PtFakePhotonOther",Rphoton->pt()/HG::GeV);
+      histoStore()->fillTH1F("EtaFakePhotonOther",Rphoton->eta());
+      histoStore()->fillTH1F("PhiFakePhotonOther",Rphoton->phi());
+      histoStore()->fillTH1F("PdgIdOther",fabs(origin->pdgId()));
+      histoStore()->fillTH1F("PtFakeOverOriginHad",(Rphoton->pt())/(origin->pt()));
+      histoStore()->fillTH2F("PtFakeVrsOriginHad", Rphoton->pt()/HG::GeV, origin->pt()/HG::GeV);
+      if (fabs(Rphoton->eta()) < 2.4) histoStore()->fillTH1F("PtFakePhotonFromHad",Rphoton->pt()/HG::GeV);
+    }
+    else if (fabs(origin->pdgId())<6 || origin->pdgId()==21 || origin->pdgId()==22) {
+      histoStore()->fillTH1F("FakePhotonCategory",5);
+      histoStore()->fillTH1F("PtFakePhotonOther",Rphoton->pt()/HG::GeV);
+      histoStore()->fillTH1F("EtaFakePhotonOther",Rphoton->eta());
+      histoStore()->fillTH1F("PhiFakePhotonOther",Rphoton->phi());
+      histoStore()->fillTH1F("PdgIdOther",fabs(origin->pdgId()));
+      if (fabs(Rphoton->eta()) < 2.4) histoStore()->fillTH1F("PtFakePhotonFromQuark",Rphoton->pt()/HG::GeV);
+    }
+    else histoStore()->fillTH1F("FakePhotonCategory",1);
+    // Getting the numbers to know what is the origin and the type from the EgammaHelper
+    //printf("Reco photon eGamma truth origin: %d\n",xAOD::EgammaHelpers::getParticleTruthOrigin(Rphoton));
+    //printf("Reco photon eGamma truth type:   %d\n",xAOD::EgammaHelpers::getParticleTruthType(Rphoton));
+  } // end of reco photon loop
+
+  return EL::StatusCode::SUCCESS;
+} // end of execute
+
+EL::StatusCode PhotonFakeRate::finalize ()
+{
+  std::cout << "Number of fake photons in total " << m_NfakePhotons << std::endl; // print out the number of m_NfakePhotons
+  return EL::StatusCode::SUCCESS;
+}

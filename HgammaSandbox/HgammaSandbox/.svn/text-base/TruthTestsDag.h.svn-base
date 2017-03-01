@@ -1,0 +1,23 @@
+#ifndef HgammaSandbox_TruthTestsDag_H
+#define HgammaSandbox_TruthTestsDag_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+class TruthTestsDag : public HgammaAnalysis
+{
+public:
+  // this is a standard constructor
+  TruthTestsDag() { }
+  TruthTestsDag(const char *name) : HgammaAnalysis(name) { }
+  virtual ~TruthTestsDag() { }
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(TruthTestsDag, 1);
+};
+
+#endif // HgammaSandbox_TruthTestsDag_H

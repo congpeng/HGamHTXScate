@@ -1,0 +1,259 @@
+#include "HgammaSandbox/JetPerformanceStudy.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+
+using namespace std;
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(JetPerformanceStudy)
+
+
+
+JetPerformanceStudy::JetPerformanceStudy(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+
+
+JetPerformanceStudy::~JetPerformanceStudy()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+EL::StatusCode JetPerformanceStudy::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  //histoStore()->createTH1F("m_yy", 60, 110, 140);
+
+  histoStore()->createTProfile("eff_jet_vs_pT_30",500,0,5000,";pT");
+  histoStore()->createTProfile("eff_jet_vs_pT_20",500,0,5000,";pT");
+  histoStore()->createTH1F("truth_jet_pt",500,0,5000000,";truth_jet_pt");
+  histoStore()->createTH1F("reco_jet_pt",500,0,5000000,";reco_jet_pt");
+  histoStore()->createTH1F("Ntruth_jets",40,-0.5,39.5,";#it{N}_{truth-jets}");
+  histoStore()->createTH1F("Nreco_jets",40,-0.5,39.5,";#it{N}_{reco-jets}");
+  histoStore()->createTProfile("frac_pileup",500,0,5000,";pT");
+  histoStore()->createTH2F("jet_pt_vs_h_pt",500,0,5000000,500,0,5000000,";responce");
+  histoStore()->createTH1F("jet_pt",500,0,5000000,";leading_jet_pt");
+  histoStore()->createTProfile("reject_rate_30",500,0,5000,";pT");
+  histoStore()->createTProfile("reject_rate_20",500,0,5000,";pT");
+  histoStore()->createTH1F("leading_truth_jet_pt",500,0,5000000,";leading_truth_jet_pt");
+  histoStore()->createTH1F("leading_reco_jet_pt",500,0,5000000,";leading_reco_jet_pt");
+  histoStore()->createTH1F("PID_raw",40,-9.5,30.5,";PID_raw");
+  histoStore()->createTH2F("truth_pt_vs_reco_pt",500,0,5000000,500,0,5000000,";");
+
+  for( int i:{1,2,3,4,5,6,7}){
+     histoStore()->createTProfile(Form("bjet_eff_vs_pT_yBin%d",i),500,0,500,";pT");
+     histoStore()->createTProfile(Form("cjet_eff_vs_pT_yBin%d",i),500,0,500,";pT");
+     histoStore()->createTProfile(Form("lightjet_eff_vs_pT_yBin%d",i),500,0,500,";pT");
+     }
+  
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode JetPerformanceStudy::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+  //xAOD::PhotonContainer photons = photonHandler()->getCorrectedContainer();
+  //if (photons.size() < 2) return EL::StatusCode::SUCCESS;
+  //TLorentzVector h = photons[0]->p4() + photons[1]->p4();
+  //histoStore()->fillTH1F("m_yy", h.M()/HG::GeV);
+  
+ 
+
+  const xAOD::JetContainer* truthjets=0;
+  if ( event()->retrieve(truthjets, "AntiKt4TruthJets" ).isFailure() ) {
+    Error("execute()", "Failed to retrieve TruthJets container." );
+    return EL::StatusCode::FAILURE;
+  } 
+
+  const xAOD::JetContainer recojets=jetHandler()->getCorrectedContainer();
+//  if ( event()->retrieve(recojets, "AntiKt4EMTopoJets" ).isFailure() ) {
+//    Error("execute()", "Failed to retrieve recoJets container." );
+//    return EL::StatusCode::FAILURE;
+//  }
+  //zhangyu:match truth and reconstructed jet
+  double leading_truthjet_pt=0;
+  double leading_recojet_pt=0;
+  double reco_pt=0;
+  double t_pt=0;
+  cout<<"n_truth_jet:"<<truthjets->size()<<endl;
+
+
+  for( auto t_jet : *truthjets){
+     if(t_jet->pt()>leading_truthjet_pt) leading_truthjet_pt=t_jet->pt();
+     histoStore()->fillTH1F("truth_jet_pt",t_jet->pt()); 
+     bool match=false;
+     for( auto *reco_jet : recojets){
+        if(reco_jet->pt()>leading_recojet_pt) leading_recojet_pt=reco_jet->pt();
+        reco_pt=reco_jet->pt();
+        histoStore()->fillTH1F("reco_jet_pt",reco_jet->pt());
+        if(reco_jet->p4().DeltaR(t_jet->p4())<0.3)
+          {match=true;
+           break;
+          }
+        }
+     double pT=t_jet->pt()/HG::GeV;
+     if(match) histoStore()->fillTH2F("truth_pt_vs_reco_pt",reco_pt,t_jet->pt());
+     bool fill_30=match?t_jet->pt()>30000&&reco_pt>30000:t_jet->pt()>30000;
+     bool fill_20=match?t_jet->pt()>20000&&reco_pt>20000:t_jet->pt()>20000;
+     
+     if(fill_30){
+     histoStore()->fillTProfile("eff_jet_vs_pT_30",pT,match);
+     histoStore()->fillTProfile("reject_rate_30",pT,!match);
+     }
+     if(fill_20){
+     histoStore()->fillTProfile("eff_jet_vs_pT_20",pT,match);
+     histoStore()->fillTProfile("reject_rate_20",pT,!match);
+     }
+     double yAbs=fabs(t_jet->p4().Rapidity());
+     histoStore()->fillTProfile("eff_jet_vs_pT",pT,match);
+     }
+     //cout<<"leading jet pt:"<<leading_truthjet_pt<<endl;  
+     histoStore()->fillTH1F("leading_truth_jet_pt",leading_truthjet_pt);
+     histoStore()->fillTH1F("leading_reco_jet_pt",leading_recojet_pt);
+  for( auto *reco_jet : recojets){
+
+     //double t_pta
+     //no pT cut;
+     //if(reco_jet->pt()<25000||reco_jet->eta()<-4.5||reco_jet->eta()>4.5) continue;
+     bool isPileup=true;
+     for( auto t_jet : *truthjets){
+        cout<<"t_jet->pt():"<<t_jet->pt()<<endl;
+        t_pt=t_jet->pt();
+        if(reco_jet->p4().DeltaR(t_jet->p4())<0.3)
+          {isPileup=false;
+           break;
+          }
+        }
+     double pT=reco_jet->pt()/HG::GeV;
+     cout<<"t_pt:"<<t_pt<<endl;
+     histoStore()->fillTProfile("frac_pileup",pT,isPileup);
+     }
+
+  histoStore()->fillTH1F("Ntruth_jets",truthjets->size());
+  histoStore()->fillTH1F("Nreco_jets",recojets.size());
+  // 1. Grab the truth particles
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticle" ).isFailure() ) {
+    Error("execute()", "Failed to retrieve TruthParticle container." );
+    return EL::StatusCode::FAILURE;
+  }
+  //zhangyu:plot the PID right?
+
+  
+  // 1.a Find the truth photons
+  std::vector< const xAOD::TruthParticle*> truthPhotons;
+  for (  const xAOD::TruthParticle *ptcl : *truthPtcls )
+    if ( HG::isGoodTruthPhoton(ptcl) )
+      truthPhotons.push_back(ptcl);
+
+  // 2. Get a few reco vectors
+  // returns fully corrected photons
+  xAOD::PhotonContainer photons = photonHandler()->getCorrectedContainer();
+  
+  
+  double lead_pt=0;
+  double lead_px=0;
+  double lead_py=0;
+  double sub_pt=0;
+  double sub_px=0;
+  double sub_py=0;
+  for( auto gam : truthPhotons ) {
+     if(gam->pt()>lead_pt){
+       sub_pt=lead_pt;
+       sub_px=lead_px;
+       sub_py=lead_py;
+       lead_pt=gam->pt();
+       lead_px=gam->px();
+       lead_py=gam->py();
+       
+       }
+     else if(gam->pt()>sub_pt){
+            sub_pt=gam->pt();
+            sub_px=gam->px();
+            sub_py=gam->py();
+            }
+     }
+
+  if(truthPhotons.size()>1)
+    {
+    cout<<"HIGGS!"<<endl;
+    double h_pt=sqrt(pow(lead_px+sub_px,2)+pow(lead_py+sub_py,2));
+    cout<<h_pt<<endl;
+    histoStore()->fillTH2F("jet_pt_vs_h_pt",h_pt,leading_truthjet_pt);
+    }
+  //plot diff flavour jet eff
+   HG::TruthParticleStruct truth = HG::identifyTruthParticles(truthPtcls,truthjets);
+   int yBin;
+   for (const auto bjet : truth.bJets ) {
+       double y =fabs( bjet->p4().Rapidity());
+       if(y>4.5) continue;
+       if(y<0.3&&y>0) yBin=1;
+       if(y<0.8&&y>0.3) yBin=2;
+       if(y<1.2&&y>0.8) yBin=3;
+       if(y<2.1&&y>1.2) yBin=4;
+       if(y<2.8&&y>2.1) yBin=5;
+       if(y<3.2&&y>2.8) yBin=6;
+       if(y<4.5&&y>3.2) yBin=7;
+  
+       double minDR = HG::minDRrap(bjet,recojets);
+       bool isReconstructed = minDR < 0.3;
+       histoStore()->fillTProfile(Form("bjet_eff_vs_pT_yBin%d",yBin),bjet->pt()*HG::invGeV,isReconstructed);
+   }
+   for (const auto cjet : truth.cJets ) {
+       double y =fabs( cjet->p4().Rapidity()); 
+       if(y>4.5) continue;
+       if(y<0.3&&y>0) yBin=1;
+       if(y<0.8&&y>0.3) yBin=2;
+       if(y<1.2&&y>0.8) yBin=3;
+       if(y<2.1&&y>1.2) yBin=4;
+       if(y<2.8&&y>2.1) yBin=5;
+       if(y<3.2&&y>2.8) yBin=6;
+       if(y<4.5&&y>3.2) yBin=7;
+             
+       double minDR = HG::minDRrap(cjet,recojets);
+       bool isReconstructed = minDR < 0.3; 
+       histoStore()->fillTProfile(Form("cjet_eff_vs_pT_yBin%d",yBin),cjet->pt()*HG::invGeV,isReconstructed);
+   }
+   for (const auto lightjet : truth.lightJets ) {
+       double y =fabs( lightjet->p4().Rapidity()); 
+       if(y>4.5) continue;
+       if(y<0.3&&y>=0) yBin=1;
+       if(y<0.8&&y>=0.3) yBin=2;
+       if(y<1.2&&y>=0.8) yBin=3;
+       if(y<2.1&&y>=1.2) yBin=4;
+       if(y<2.8&&y>=2.1) yBin=5;
+       if(y<3.2&&y>=2.8) yBin=6;
+       if(y<=4.5&&y>=3.2) yBin=7;
+       cout<<y<<endl;
+       cout<<yBin<<endl;
+             
+       double minDR = HG::minDRrap(lightjet,recojets);
+       bool isReconstructed = minDR < 0.3; 
+       histoStore()->fillTProfile(Form("lightjet_eff_vs_pT_yBin%d",yBin),lightjet->pt()*HG::invGeV,isReconstructed);
+   }
+  cout<<"done!"<<endl;
+  return EL::StatusCode::SUCCESS;
+}
+

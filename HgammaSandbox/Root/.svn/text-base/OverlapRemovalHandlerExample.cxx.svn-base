@@ -1,0 +1,276 @@
+#include "HgammaSandbox/OverlapRemovalHandlerExample.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(OverlapRemovalHandlerExample)
+
+
+
+OverlapRemovalHandlerExample::OverlapRemovalHandlerExample(const char *name)
+: HgammaAnalysis(name)
+{
+}
+
+
+
+OverlapRemovalHandlerExample::~OverlapRemovalHandlerExample()
+{
+}
+
+//The following initialize() is for testing the association utils package. No need for using the Overlap Removal Handler 
+EL::StatusCode OverlapRemovalHandlerExample::initialize()
+{
+  HgammaAnalysis::initialize();
+  m_overlapRemovalHandlerKL = new HG::OverlapRemovalHandlerKL("OverlapRemoval");
+  m_overlapRemovalHandlerKL->initialize(*config());
+  
+  return EL::StatusCode::SUCCESS;
+}
+
+
+EL::StatusCode OverlapRemovalHandlerExample::createOutput()
+{
+  for(TString OR:{"_NOR","_OR"}){
+    for(TString dR:{"_minDR","_minDRrap"}){
+      for(TString combo :{"jet_gam","elec_gam","mu_gam","jet_elec","mu_jet"}){
+      histoStore()->createTH1F(combo+dR+OR,50,0,5);}}}
+
+  for(TString OR:{"_NOR","_OR"}){
+    for(TString dR:{"_DEta","_DPhi"}){
+      for(TString combo :{"elec_elec"}){
+      histoStore()->createTH1F(combo+dR+OR,100,0,0.5);}}}
+
+  for(TString OR:{"_NOR","_OR"}){
+    for(TString dR:{"_pT"}){
+      for(TString combo :{"elec","mu"}){
+      histoStore()->createTH1F(combo+dR+OR,50,0,150);}}}
+
+  for(TString OR:{"_NOR","_OR"}){
+    for(TString dR:{"_eta","_phi"}){
+      for(TString combo :{"elec","mu"}){
+      histoStore()->createTH1F(combo+dR+OR,100,-5,5);}}}
+
+  histoStore()->createTH1F("Z_Boson_Mass_OR",50,0,150);
+  histoStore()->createTH1F("Z_Boson_Mass_NOR",50,0,150);
+
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode OverlapRemovalHandlerExample::execute()
+{
+  HgammaAnalysis::execute();
+  eventHandler()->pass();
+  
+  //retreive all objects
+  xAOD::PhotonContainer allphotons = photonHandler()->getCorrectedContainer();
+  xAOD::JetContainer alljets = jetHandler()->getCorrectedContainer();
+  xAOD::MuonContainer allmuons = muonHandler()->getCorrectedContainer();
+  xAOD::ElectronContainer allelecs = electronHandler()->getCorrectedContainer();
+
+  //select sub-sets of objects passing selection
+  xAOD::PhotonContainer photons= photonHandler()->applySelection(allphotons);
+  xAOD::JetContainer jets= jetHandler()->applySelection(alljets);
+  xAOD::MuonContainer muons= muonHandler()->applySelection(allmuons);
+  xAOD::ElectronContainer elecs= electronHandler()->applySelection(allelecs);
+
+  //reject events with less than two good photon candidates
+  if (photons.size()<2) return EL::StatusCode::SUCCESS;
+
+  //plot some histograms before overlap removal for OverlapRemovalHandlerKL
+  fillHistos_Rapidity(photons, jets, elecs, muons, "NOR");
+ 
+  //use the overlap removal handler to remove overlaps
+  overlapHandler()->removeOverlap(photons, jets, elecs, muons);
+
+  //plot some histograms after overlap removal for OverlapRemovalHandlerKL
+  fillHistos_Rapidity(photons, jets, elecs, muons, "OR");
+
+  /* tips
+  //to only consider leading photons
+  xAOD::PhotonContainer leadingPhotons(SG::VIEW_ELEMENTS);
+  if(photons.size()>0) leadingPhotons.push_back(photons[0]);
+  if(photons.size()>1) leadingPhotons.push_back(photons[1]);
+  
+  //get muons that overlap with jets within 0.4 dR
+  xAOD::MuonContaienr muonsInJets=overlapHandler()->getOverlaps(muons,jets,0.4);
+  
+  //If, eg, there are no muons in the analysis
+  overlapHandler()->removeOverlap(&photons, &jets, &elecs, 0)
+
+  //to turn off any removal step, provide a negative cut value in the conif file
+   */
+
+  
+
+  //////////////////////////////////////////////////////////////////////////////////////
+  //the following is for testing differen things
+
+
+  //---------------------------
+  //Ele-Ele overlap removal
+  //---------------------------  
+  //make a sub-set of electrons passing selection for testing ele-ele overlap removal
+  xAOD::ElectronContainer elecs1= electronHandler()->applySelection(allelecs);
+  fillHistos_ElecElec(elecs,"NOR");
+  overlapHandlerKL()->removeElecOverlap(elecs1,0.075,0.125);
+  fillHistos_ElecElec(elecs,"OR");
+
+
+  //---------------------------
+  //VH Lepton validation
+  //--------------------------  
+  //make sub-sets of objects passing selection for WH/ZH validation
+  xAOD::PhotonContainer photons2= photonHandler()->applySelection(allphotons);
+  xAOD::JetContainer jets2= jetHandler()->applySelection(alljets);
+  xAOD::MuonContainer muons2= muonHandler()->applySelection(allmuons);
+  xAOD::ElectronContainer elecs2= electronHandler()->applySelection(allelecs);
+  
+  //get truth photons and electrons
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticle" ).isFailure() )
+    HG::fatal("Cannot access TruthParticle");
+  HG::TruthPtcls truthElecs  = HG::getGoodTruthElectrons(truthPtcls);
+  HG::TruthPtcls truthMuons=  HG::getGoodTruthMuons(truthPtcls);
+
+  //containers for Reco ptcl matched to True ptcl
+  xAOD::ElectronContainer matchedElecs(SG::VIEW_ELEMENTS);
+  xAOD::MuonContainer matchedMuons(SG::VIEW_ELEMENTS);
+  
+  for(auto elec:elecs2){
+    if(HG::minDRrap(elec,truthElecs)<0.1)
+      matchedElecs.push_back(elec);
+  }
+  for(auto mu:muons2){
+    if(HG::minDRrap(mu,truthMuons)<0.1)
+      matchedMuons.push_back(mu);
+  }
+
+  fillHistos_VH(matchedElecs,matchedMuons,"NOR");
+
+  //use the overlap removal handler to remove overlaps
+  overlapHandler()->removeOverlap(photons2, jets2, matchedElecs, matchedMuons);
+   
+  fillHistos_VH(matchedElecs,matchedMuons,"OR");
+
+
+    /* this is for testing the AssociationUtils package
+  //decorateOverlaps() decorates objects using the official overlap removal tool. 
+  //decorateModifiedOverlaps() decorates objects based on HGam strategy. 
+  //applyOverlapRemoval() removes overlaps based on decoration
+
+  overlapHandlerKL()->decorateOverlaps()(photons,jets, elecs,muons); 
+  overlapHandlerKL()->applyModifiedOverlapDecoration(photons,jets, elecs,muons); 
+  overlapHandlerKL()->applyOverlapRemoval(photons,elecs,jets,muons);
+  */
+
+
+ return EL::StatusCode::SUCCESS;
+}
+
+  
+void OverlapRemovalHandlerExample::fillHistos_Rapidity(xAOD::PhotonContainer &photons,
+					      xAOD::JetContainer &jets,
+					      xAOD::ElectronContainer &elecs,
+					      xAOD::MuonContainer &muons, TString histSuffix) {
+  for(auto gam:photons){
+    double dr=HG::minDRrap(gam,jets);
+    histoStore()->fillTH1F("jet_gam_minDRrap_"+histSuffix,dr);}
+  for(auto gam:photons){
+    double dr=HG::minDRrap(gam,elecs);
+    histoStore()->fillTH1F("elec_gam_minDRrap_"+histSuffix,dr);}
+  for(auto gam:photons){
+    double dr=HG::minDRrap(gam,muons);
+    histoStore()->fillTH1F("mu_gam_minDRrap_"+histSuffix,dr);}
+  for(auto elec:elecs){
+    double dr=HG::minDRrap(elec,jets);
+      histoStore()->fillTH1F("jet_elec_minDRrap_"+histSuffix,dr);}
+  for(auto jet:jets){
+    double dr=HG::minDRrap(jet,muons);
+    histoStore()->fillTH1F("mu_jet_minDRrap_"+histSuffix,dr);}
+}  
+
+
+void OverlapRemovalHandlerExample::fillHistos_Eta(xAOD::PhotonContainer &photons,
+						  xAOD::JetContainer &jets,
+						  xAOD::ElectronContainer &elecs,
+						  xAOD::MuonContainer &muons, 
+						  TString histSuffix) 
+{
+  for(auto gam:photons){
+    double dr=HG::minDR(gam,jets);
+    histoStore()->fillTH1F("jet_gam_minDR_"+histSuffix,dr);}
+  for(auto gam:photons){
+    double dr=HG::minDR(gam,elecs);
+    histoStore()->fillTH1F("elec_gam_minDR_"+histSuffix,dr);}
+  for(auto gam:photons){
+    double dr=HG::minDR(gam,muons);
+    histoStore()->fillTH1F("mu_gam_minDR_"+histSuffix,dr);}
+  for(auto elec:elecs){
+    double dr=HG::minDR(elec,jets);
+      histoStore()->fillTH1F("jet_elec_minDR_"+histSuffix,dr);}
+  for(auto jet:jets){
+    double dr=HG::minDR(jet,muons);
+    histoStore()->fillTH1F("mu_jet_minDR_"+histSuffix,dr);}
+}
+
+void OverlapRemovalHandlerExample::fillHistos_ElecElec(xAOD::ElectronContainer &elecs, 
+						       TString histSuffix) {
+  for(auto refElec:elecs){
+    for(auto probeElec:elecs){
+      double dEta=fabs(probeElec->eta()-refElec->eta());
+      histoStore()->fillTH1F("elec_elec_DEta_"+histSuffix,dEta);}}
+  
+  for(auto refElec:elecs){
+    for(auto probeElec:elecs){
+      double dPhi=fabs(probeElec->phi()-refElec->phi());
+      histoStore()->fillTH1F("elec_elec_DPhi_"+histSuffix,dPhi);}
+  }
+}
+
+void OverlapRemovalHandlerExample::fillHistos_VH(xAOD::ElectronContainer &elecs,
+						 xAOD::MuonContainer &muons,
+						 TString histSuffix) {
+  for(auto elec:elecs){
+    histoStore()->fillTH1F("elec_pT_"+histSuffix,elec->pt()*0.001);
+    histoStore()->fillTH1F("elec_eta_"+histSuffix,elec->eta());
+    histoStore()->fillTH1F("elec_phi_"+histSuffix,elec->phi());
+  }
+  
+  for(auto mu:muons){
+    histoStore()->fillTH1F("mu_pT_"+histSuffix,mu->pt()*0.001);
+    histoStore()->fillTH1F("mu_eta_"+histSuffix,mu->eta());
+    histoStore()->fillTH1F("mu_phi_"+histSuffix,mu->phi());
+  }
+
+  bool ZelecExists=false;
+  bool ZmuExists = false;
+  double Mass_Zelec;
+  double Mass_Zmu;
+  TLorentzVector e1;
+  TLorentzVector e2;
+  TLorentzVector mu1;
+  TLorentzVector mu2;
+  if((elecs.size())>1){
+    e1 = elecs[0]->p4();       
+    for(unsigned int i=1;i<(elecs.size());i++){  
+      if(elecs[0]->charge() == elecs[i]->charge()) continue;     
+      e2= elecs[i]->p4();     
+      ZelecExists=true;     
+      Mass_Zelec=(e1+e2).M()*0.001;
+	i=elecs.size();}}
+  if((muons.size())>1){
+    mu1=muons[0]->p4();
+    for(unsigned int i=1;i<(muons.size());i++){
+      if(muons[0]->charge() == muons[i]->charge()) continue;
+      mu2= muons[i]->p4();
+      ZmuExists=true;
+      Mass_Zmu=(mu1+mu2).M()*0.001;
+	i=muons.size();}}
+
+  if(ZmuExists){
+    histoStore()->fillTH1F("Z_Boson_Mass_"+histSuffix,Mass_Zmu);}
+  if(ZelecExists){
+    histoStore()->fillTH1F("Z_Boson_Mass_"+histSuffix,Mass_Zelec);}
+}

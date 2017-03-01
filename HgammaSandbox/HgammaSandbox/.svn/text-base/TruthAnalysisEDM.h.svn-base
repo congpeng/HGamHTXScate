@@ -1,0 +1,66 @@
+/*
+  As Event Loop causes compiler errors when some xAOD headers are included by "MyxAODAnalysis.h", the desired xAOD
+  objects are declared here as global variables instead. This is because they cannot be included as members of the
+  MyxAODAnalysis class used by Event Loop, but we still want to be able to access them as if they were. This is the
+  solution used in the HGamma Sandbox, and is used here for consistency (and <hopefully> readability). If a more
+  elegant solution becomes/is available then this would be nice.
+*/
+
+
+#ifndef H_TRUTHANALYSIS
+#define H_TRUTHANALYSIS
+
+#include "xAODTruth/TruthParticleContainer.h"
+#include "xAODTruth/TruthParticleAuxContainer.h"
+#include "xAODJet/JetContainer.h"
+#include "xAODJet/JetAuxContainer.h"
+
+#include <string>
+#include <TH1.h>
+
+namespace TA
+{
+
+  const xAOD::TruthParticleContainer *m_truthParticles(0);
+  const xAOD::JetContainer *m_antiKt4TruthJets(0);
+  const xAOD::JetContainer *m_antiKt4TruthWZJets(0);
+
+  xAOD::TruthParticleContainer *m_truthPhotons;
+  xAOD::TruthParticleContainer *m_truthElectrons;
+  xAOD::TruthParticleContainer *m_truthMuons;
+  xAOD::JetContainer *m_truthJets;
+  xAOD::TruthParticleContainer *m_truthDiphotonSystem;
+  xAOD::TruthParticleContainer *m_truthDiphotonSystemAllPS;
+
+
+  xAOD::TruthParticleAuxContainer *m_truthAuxPhotons;
+  xAOD::TruthParticleAuxContainer *m_truthAuxElectrons;
+  xAOD::TruthParticleAuxContainer *m_truthAuxMuons;
+  xAOD::JetAuxContainer *m_truthAuxJets;
+  xAOD::TruthParticleAuxContainer *m_truthAuxDiphotonSystem;
+  xAOD::TruthParticleAuxContainer *m_truthAuxDiphotonSystemAllPS;
+
+  std::vector< xAOD::TruthParticle > m_truthPhotonsVector;
+
+
+  bool GoodTruthParticle ( const xAOD::TruthParticle* myParticle );
+  TLorentzVector DressLepton ( const xAOD::TruthParticle* myLepton );
+  double PhotonIso ( const xAOD::TruthParticle* myPhoton );
+  bool FillHistogram ( std::map<std::string,TH1*>& m_myHistograms , std::string objectName , std::string typeName , float value , float weight );
+  template <class ConstIterator> bool PrintSingleParticleKinematics ( ConstIterator particle , std::string name ,
+                                                                      std::map < std::string, TH1* >& m_myHistograms , double m_eventWeight );
+  template <class Higgs> bool PrintHiggsKinematics ( Higgs particle , std::string name ,
+                                                     std::map < std::string, TH1* >& m_myHistograms , double m_eventWeight );
+  template <class ConstIterator> bool PrintMultipleParticleKinematics ( ConstIterator particleA , ConstIterator particleB , std::string name ,
+                                                                        std::map < std::string, TH1* >& m_myHistograms , double m_eventWeight );
+  template <class Container> bool PrintKinematics ( Container* particles , std::string name , std::map < std::string, TH1* >& m_myHistograms,
+                                                    double m_eventWeight);
+  template <class Container> bool PrintDiphotonKinematics   ( Container* particles , std::string name , std::map < std::string, TH1* >& m_myHistograms,
+                                                              double m_eventWeight);
+
+  template <class Particle> float antiKtDistanceParameterBeam ( Particle* particleA , float antiKt_p , float antiKt_R );
+  template <class Particle> float antiKtDistanceParameterParticle ( Particle* particleA , Particle* particleB , float antiKt_p , float antiKt_R );
+
+}
+
+#endif

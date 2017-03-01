@@ -1,0 +1,294 @@
+// -------------------------------------------------------------------
+// Used to study isolation distributions and selection optimization // 
+//          jared.vasquez@yale.edu     March 2015                   //
+// -------------------------------------------------------------------
+
+#include "HgammaSandbox/IsoPlotter.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "HGamAnalysisFramework/TruthUtils.h"
+#include "xAODEgamma/EgammaxAODHelpers.h"
+#include "xAODEgamma/PhotonxAODHelpers.h"
+#include "xAODTruth/xAODTruthHelpers.h"
+
+using namespace std;
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(IsoPlotter)
+
+IsoPlotter::IsoPlotter(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+
+
+IsoPlotter::~IsoPlotter()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+EL::StatusCode IsoPlotter::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  //histoStore()->createTH1F("m_yy", 60, 110, 140);
+  //histoStore()->createTH1F("pT_y1", 80, 100, 200,";#it{p}_{T#gamma1} [GeV]");
+
+  histoStore()->createTH1F("h_nPhotons", 10, -0.5, 9.5, ";# of Accepted Reconstructed Photons");
+  histoStore()->createTH1F("h_avgmu", 50, -0.5, 49.5, ";< #mu >");
+  histoStore()->createTH1F("h_nPV", 50, -0.5, 49.5, ";N_{PV}");
+  histoStore()->createTH1F("h_rho", 50, -0.5, 49.5, ";N_{PV}");
+ 
+  for ( TString iph: {"", "_lead", "_subl"} ) {
+    for ( TString etaReg: {"","_ctl","_fwd","_conv","_conv_ctl","_conv_fwd","_uncv","_uncv_ctl","_uncv_fwd"} ) {
+    
+		  for ( TString truth: {"", "_true", "_fake"} ) {
+				TString tag = truth+etaReg+iph;
+        histoStore()->createTH1F("h_ptcone20"+tag, 45, 1, 10, ";p^{20}_{T} [GeV]");
+        histoStore()->createTH1F("h_ptcone30"+tag, 45, 1, 10, ";p^{30}_{T} [GeV]");
+        histoStore()->createTH1F("h_ptcone40"+tag, 45, 1, 10, ";p^{40}_{T} [GeV]");
+
+        histoStore()->createTH1F("h_etcone20"+tag, 70, -20, 50, ";E^{20}_{T} [GeV]");
+        histoStore()->createTH1F("h_etcone30"+tag, 70, -20, 50, ";E^{30}_{T} [GeV]");
+        histoStore()->createTH1F("h_etcone40"+tag, 70, -20, 50, ";E^{40}_{T} [GeV]");
+  
+        histoStore()->createTH1F("h_topoetcone20"+tag, 70, -20, 50, ";E^{topo, 20}_{T} [GeV]");
+        histoStore()->createTH1F("h_topoetcone30"+tag, 70, -20, 50, ";E^{topo, 30}_{T} [GeV]");
+        histoStore()->createTH1F("h_topoetcone40"+tag, 70, -20, 50, ";E^{topo, 40}_{T} [GeV]");
+
+        histoStore()->createTH1F("h_ptrel20"+tag, 50, 0, 1, ";p^{20}_{T}/E_{T} [GeV]");
+        histoStore()->createTH1F("h_ptrel30"+tag, 50, 0, 1, ";p^{30}_{T}/E_{T} [GeV]");
+        histoStore()->createTH1F("h_ptrel40"+tag, 50, 0, 1, ";p^{40}_{T}/E_{T} [GeV]");
+    
+        histoStore()->createTH1F("h_toporel20"+tag, 50, 0, 1, ";E^{topo, 20}_{T}/E_{T} [GeV]");
+        histoStore()->createTH1F("h_toporel30"+tag, 50, 0, 1, ";E^{topo, 30}_{T}/E_{T} [GeV]");
+        histoStore()->createTH1F("h_toporel40"+tag, 50, 0, 1, ";E^{topo, 40}_{T}/E_{T} [GeV]");
+
+        for( TString var1: {"_topocone20","_topocone30","_topocone40"}) {
+          if (truth == "") break;
+          for( TString var2: {"_ptcone20","_ptcone30","_ptcone40"}) {
+            histoStore()->createTH2F( "h2"+var1+var2+tag, 70, -20, 50, 50, 0, 10 );
+          }
+        }
+			}
+      
+      histoStore()->createTH1F( "h_ph_pt_all"+etaReg+iph, 100, 20, 220, ";p^{all #gamma}_{T} [GeV]");
+      histoStore()->createTH1F("h_ph_eta_all"+etaReg+iph,  80, -4,   4,        ";#eta^{all #gamma}");
+      histoStore()->createTH1F(    "h_mu_all"+etaReg+iph,  50, -0.5, 49.5,   "; <#mu>^{all #gamma}");
+      histoStore()->createTH1F(   "h_nPV_all"+etaReg+iph,  50, -0.5, 49.5,  "; N^{all #gamma}_{PV}");
+      histoStore()->createTH2F(  "h2_pt_eta_all"+etaReg+iph, 100, 20, 220, 80, -4, 4, ";p_{T,#gamma}} [GeV]; #eta_{#gamma}");
+      histoStore()->createTH2F(  "h2_nPV_mu_all"+etaReg+iph,  50, -0.5, 49.5, 50, -0.5, 49.5, "; N_{PV}; <#mu>");
+
+    
+      for( TString isoType: {"_iso","_trk","_topo"} ) {
+        for ( TString isoCut: {""} ){ //,"_10GeV","_9GeV","_8GeV","_7GeV","_6GeV"} ){
+          histoStore()->createTH1F( "h_ph_pt"+isoType+etaReg+iph+isoCut, 100, 20, 220, ";p^{#gamma}_{T} [GeV]");
+          histoStore()->createTH1F("h_ph_eta"+isoType+etaReg+iph+isoCut,  80, -4,   4,        ";#eta^{#gamma}");
+          histoStore()->createTH1F(    "h_mu"+isoType+etaReg+iph+isoCut,  50, -0.5, 49.5,   "; <#mu>");
+          histoStore()->createTH1F(   "h_nPV"+isoType+etaReg+iph+isoCut,  50, -0.5, 49.5,  "; N_{PV}");
+          histoStore()->createTH2F("h2_pt_eta"+isoType+etaReg+iph+isoCut, 100, 20, 220, 80, -4, 4, ";p_{T,#gamma}} [GeV]; #eta_{#gamma}");
+          histoStore()->createTH2F("h2_nPV_mu"+isoType+etaReg+iph+isoCut,  50, -0.5, 49.5, 50, -0.5, 49.5, "; N_{PV}; <#mu>");
+          
+          histoStore()->createTProfile(  "h_eff_ph_pt"+isoType+isoCut+etaReg+iph,  100,   20,  220, ";#it{p}^{#gamma}_{T} [GeV]");
+          histoStore()->createTProfile( "h_eff_ph_eta"+isoType+isoCut+etaReg+iph,   80,   -4,    4,        ";#it{#eta}^{#gamma}");
+          histoStore()->createTProfile(     "h_eff_mu"+isoType+isoCut+etaReg+iph,   45, -0.5, 44.5,                    "; <#mu>"); 
+          histoStore()->createTProfile(    "h_eff_nPV"+isoType+isoCut+etaReg+iph,   45, -0.5, 44.5,                   "; N_{PV}"); 
+
+        }
+      }  
+    }
+  }
+
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+EL::StatusCode IsoPlotter::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+  
+  //Count # of primary vertices
+  const xAOD::VertexContainer* vertices = 0;
+  if (!event()->retrieve(vertices, "PrimaryVertices").isSuccess()) {
+    Error("execute()","Could not retrieve primary vertex container.");
+  }
+  m_evt_nPV = vertices->size();
+  m_evt_avgmu = eventInfo()->averageInteractionsPerCrossing();
+
+  histoStore()->fillTH1F("h_nPV", m_evt_nPV);
+  histoStore()->fillTH1F("h_avgmu", m_evt_avgmu);
+
+
+  //Get photons and apply some selection.
+  xAOD::PhotonContainer allPhotons = photonHandler()->getCorrectedContainer();
+  if (allPhotons.size()<1) return EL::StatusCode::SUCCESS; //require at least one photon.
+  xAOD::PhotonContainer photons = photonHandler()->applySelection(allPhotons);
+  if (photons.size()<1) return EL::StatusCode::SUCCESS; //require at least one photon.
+
+  //loop through reconstructed photons and plot isolation variables.
+  int nPhotons = 0;
+  TString phID[2] = {"","_lead"};
+  for ( xAOD::Photon *gam : photons ) {
+    bool isCtrl = isCentral(gam);
+    bool isFrwd = isFwd(gam);
+		bool isGood = ( isCtrl || isFrwd );
+		if (!isGood) continue;
+		
+		// Get matched truth particle (if one exists)
+		const xAOD::TruthParticle *tgam = xAOD::TruthHelpers::getTruthParticle(*gam);
+		if(!tgam) continue;
+
+		nPhotons++;
+    if (nPhotons==1) phID[1] = "_lead";
+    else if (nPhotons==2) phID[1] = "_subl";
+    else continue;
+
+		//Get Photon Details
+		bool isConv = xAOD::EgammaHelpers::isConvertedPhoton(gam);
+		bool isTruePhoton = HG::isGoodTruthPhoton(tgam);
+		bool isUncv = (!isConv);
+    
+
+    for ( TString iph : phID ) {
+      if (isGood) FillIsoPlots( gam, isTruePhoton, ""+iph );
+      if (isCtrl) FillIsoPlots( gam, isTruePhoton, "_ctl"+iph );
+      if (isFrwd) FillIsoPlots( gam, isTruePhoton, "_fwd"+iph );
+    
+      if (isGood && isConv) FillIsoPlots( gam, isTruePhoton, "_conv"+iph );
+      if (isCtrl && isConv) FillIsoPlots( gam, isTruePhoton, "_conv_ctl"+iph );
+      if (isFrwd && isConv) FillIsoPlots( gam, isTruePhoton, "_conv_fwd"+iph );
+    
+      if (isGood && isUncv) FillIsoPlots( gam, isTruePhoton, "_uncv"+iph );
+      if (isCtrl && isUncv) FillIsoPlots( gam, isTruePhoton, "_uncv_ctl"+iph );
+      if (isFrwd && isUncv) FillIsoPlots( gam, isTruePhoton, "_uncv_fwd"+iph );
+    }
+
+		// end loop over reco photons
+  }
+  histoStore()->fillTH1F("h_nPhotons",nPhotons);
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+// -------------------------------------------------------------------------------
+void IsoPlotter::FillIsoPlots( const xAOD::Photon *r_gam, bool isTruePhoton, TString type ) {
+// -------------------------------------------------------------------------------
+    double topo_cut = 6.0, trck_cut = 2.6;
+
+    double et = r_gam->pt()/HG::GeV;
+    
+    double ptcone20 = r_gam->isolationValue(xAOD::Iso::ptcone20)/HG::GeV;
+    double ptcone30 = r_gam->isolationValue(xAOD::Iso::ptcone30)/HG::GeV;
+    double ptcone40 = r_gam->isolationValue(xAOD::Iso::ptcone40)/HG::GeV;
+
+    double etcone20 = r_gam->isolationValue(xAOD::Iso::etcone20)/HG::GeV;
+    double etcone30 = r_gam->isolationValue(xAOD::Iso::etcone30)/HG::GeV;
+    double etcone40 = r_gam->isolationValue(xAOD::Iso::etcone40)/HG::GeV;
+    
+    double topoetcone20 = r_gam->isolationValue(xAOD::Iso::topoetcone20)/HG::GeV;
+    double topoetcone30 = r_gam->isolationValue(xAOD::Iso::topoetcone30)/HG::GeV;
+    double topoetcone40 = r_gam->isolationValue(xAOD::Iso::topoetcone40)/HG::GeV;
+
+    double ptrel20 = ptcone20/et;
+    double ptrel30 = ptcone30/et;
+    double ptrel40 = ptcone40/et;
+    
+    double toporel20 = topoetcone20/et;
+    double toporel30 = topoetcone30/et;
+    double toporel40 = topoetcone40/et;
+    
+    TString isoname1[3] = {"_topocone20","_topocone30","_topocone40" };
+    TString isoname2[3] = {  "_ptcone20",  "_ptcone30",  "_ptcone40" };
+    double  isovars1[3] = { topoetcone20, topoetcone30, topoetcone40 };
+    double  isovars2[3] = {     ptcone20,     ptcone30,     ptcone40 };
+
+		for( TString truth: {"","_true","_fake"} ) {
+			if( (truth == "_true") && !isTruePhoton ) continue;
+			if( (truth == "_fake") &&  isTruePhoton ) continue;
+			TString tag = truth+type;
+      
+			histoStore()->fillTH1F("h_ptcone20"+tag, ptcone20);
+      histoStore()->fillTH1F("h_ptcone30"+tag, ptcone30);
+      histoStore()->fillTH1F("h_ptcone40"+tag, ptcone40);
+    
+      histoStore()->fillTH1F("h_etcone20"+tag, etcone20);
+      histoStore()->fillTH1F("h_etcone30"+tag, etcone30);
+      histoStore()->fillTH1F("h_etcone40"+tag, etcone40);
+    
+      histoStore()->fillTH1F("h_topoetcone20"+tag, topoetcone20);
+      histoStore()->fillTH1F("h_topoetcone30"+tag, topoetcone30);
+      histoStore()->fillTH1F("h_topoetcone40"+tag, topoetcone40);
+
+      histoStore()->fillTH1F("h_ptrel20"+tag, ptrel20);
+      histoStore()->fillTH1F("h_ptrel30"+tag, ptrel30);
+      histoStore()->fillTH1F("h_ptrel40"+tag, ptrel40);
+    
+      histoStore()->fillTH1F("h_toporel20"+tag, toporel20);
+      histoStore()->fillTH1F("h_toporel30"+tag, toporel30);
+      histoStore()->fillTH1F("h_toporel40"+tag, toporel40);
+
+      for( int ivar1: {0,1,2} ) {
+        if (truth == "") break;
+        for( int ivar2: {0,1,2} ) {
+          if( ivar1 == ivar2 ) continue;
+          TString h2name = "h2"+isoname1[ivar1]+isoname2[ivar2]+tag;
+          histoStore()->fillTH2F(h2name, isovars1[ivar1], isovars2[ivar2]);
+        }
+      }
+		}
+
+    // Make efficiency plots
+    bool passTopoCut = (topoetcone40 < topo_cut);
+    bool passTrckCut = (    ptcone20 < trck_cut);
+    bool  passIsoCut = ( passTopoCut && passTrckCut );
+    
+    histoStore()->fillTProfile(   "h_eff_ph_pt_trk"+type, r_gam->pt()/HG::GeV, passTrckCut ); 
+    histoStore()->fillTProfile(  "h_eff_ph_eta_trk"+type,        r_gam->eta(), passTrckCut ); 
+    histoStore()->fillTProfile(      "h_eff_mu_trk"+type,         m_evt_avgmu, passTrckCut ); 
+    histoStore()->fillTProfile(     "h_eff_nPV_trk"+type,           m_evt_nPV, passTrckCut ); 
+    
+    histoStore()->fillTProfile(  "h_eff_ph_pt_topo"+type, r_gam->pt()/HG::GeV, passTopoCut ); 
+    histoStore()->fillTProfile( "h_eff_ph_eta_topo"+type,        r_gam->eta(), passTopoCut ); 
+    histoStore()->fillTProfile(     "h_eff_mu_topo"+type,         m_evt_avgmu, passTopoCut ); 
+    histoStore()->fillTProfile(    "h_eff_nPV_topo"+type,           m_evt_nPV, passTopoCut ); 
+    
+    histoStore()->fillTProfile(  "h_eff_ph_pt_iso"+type, r_gam->pt()/HG::GeV,  passIsoCut ); 
+    histoStore()->fillTProfile( "h_eff_ph_eta_iso"+type,        r_gam->eta(),  passIsoCut ); 
+    histoStore()->fillTProfile(     "h_eff_mu_iso"+type,         m_evt_avgmu,  passIsoCut ); 
+    histoStore()->fillTProfile(    "h_eff_nPV_iso"+type,           m_evt_nPV,  passIsoCut ); 
+    
+
+}
+    
+
+bool IsoPlotter::isCentral( const xAOD::Photon *r_gam ) {
+  return (fabs(r_gam->eta()) < 1.37);
+}
+bool IsoPlotter::isCrack( const xAOD::Photon *r_gam ) {
+  return ( (fabs(r_gam->eta()) < 1.52) && (fabs(r_gam->eta()) > 1.37) );
+}
+bool IsoPlotter::isFwd( const xAOD::Photon *r_gam ) {
+  return ( (fabs(r_gam->eta()) < 2.37) && (fabs(r_gam->eta()) > 1.52) );
+}
+
+

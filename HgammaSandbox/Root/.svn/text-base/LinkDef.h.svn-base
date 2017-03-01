@@ -1,0 +1,79 @@
+#include <HgammaSandbox/DiphotonVertexStudiesReco.h>
+
+#include <HgammaSandbox/JetPerformanceIvan.h>
+#include <HgammaSandbox/MatchTruthRecoJets.h>
+
+#include <HgammaSandbox/IsoEff.h>
+
+#include <HgammaSandbox/ETmissHandlerVsJVT.h>
+
+#include <HgammaSandbox/ETmissLPNHE.h>
+
+#include <HgammaSandbox/FakePhotonsDag.h>
+#include <HgammaSandbox/HyyMETwits.h>
+#include <HgammaSandbox/ETmissExample.h>
+#include <HgammaSandbox/ETmissExampleMC15.h>
+#include <HgammaSandbox/ETmissHandlerExample.h>
+#include <HgammaSandbox/MCTRUTH0plots.h>
+#include <HgammaSandbox/JetPerformanceStudy.h>
+#include <HgammaSandbox/DiphotonVertexStudies.h>
+#include <HgammaSandbox/OverlapRemovalHandlerExample.h>
+#include <HgammaSandbox/PhotonFakeRate.h>
+#include <HgammaSandbox/TruthTestsDag.h>
+#include <HgammaSandbox/MCplotsLeo.h>
+#include <HgammaSandbox/TestAnalysis.h>
+#include <HgammaSandbox/SignalModelSystematics.h>
+#include <HgammaSandbox/RecoEff.h>
+#include <HgammaSandbox/HgammaTruthAnalysis.h>
+#include <HgammaSandbox/TruthAnalysisKehinde.h>
+#include <HgammaSandbox/PhotonReco.h>
+#include <HgammaSandbox/IsoPlotter.h>
+
+#ifdef __CINT__
+#pragma link off all globals;
+#pragma link off all classes;
+#pragma link off all functions;
+#pragma link C++ nestedclass;
+
+#pragma link C++ class HgammaTruthAnalysis+;
+#pragma link C++ class RecoEff+;
+#pragma link C++ class SignalModelSystematics+;
+#pragma link C++ class TestAnalysis+;
+#pragma link C++ class MCplotsLeo+;
+#pragma link C++ class TruthTestsDag+;
+#pragma link C++ class PhotonReco+;
+#pragma link C++ class TruthAnalysisKehinde+;
+#pragma link C++ class IsoPlotter+;
+#pragma link C++ class PhotonFakeRate+;
+#pragma link C++ class DiphotonVertexStudies+;
+#pragma link C++ class OverlapRemovalHandlerExample+;
+#pragma link C++ class JetPerformanceStudy+;
+#pragma link C++ class MCTRUTH0plots+;
+#pragma link C++ class ETmissExample+;
+#pragma link C++ class ETmissExampleMC15+;
+#pragma link C++ class ETmissHandlerExample+;
+#pragma link C++ class FakePhotonsDag+;
+#pragma link C++ class HyyMETwits+;
+#pragma link C++ class ETmissLPNHE+;
+#endif
+
+#ifdef __CINT__
+#pragma link C++ class ETmissHandlerVsJVT+;
+#endif
+
+#ifdef __CINT__
+#pragma link C++ class IsoEff+;
+#endif
+
+#ifdef __CINT__
+#pragma link C++ class JetPerformanceIvan+;
+#endif
+
+#ifdef __CINT__
+#pragma link C++ class MatchTruthRecoJets+;
+#endif
+
+#ifdef __CINT__
+#pragma link C++ class DiphotonVertexStudiesReco+;
+#endif
+

@@ -1,0 +1,52 @@
+#ifndef HgammaSandbox_PhotonFakeRate_H
+#define HgammaSandbox_PhotonFakeRate_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+class PhotonFakeRate : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+
+
+  // variables that don't get filled at submission time should be
+  // protected from being send from the submission node to the worker
+  // node (done by the //!)
+private:
+  // Tree *myTree; //!
+  // TH1 *myHist; //!
+  double m_distTrue;
+  // we define a counter to see how many fake photons we have in that sample
+  int m_NfakePhotons; 
+  // we define a counter to see how many truth particles we have in the cone 0.1
+  int m_NtruthDR01;
+  // we define a counter to see how many truth particles we have in the cone 0.1 with a parent with 15GeV Pt
+  int m_NtruthDR01ParPt15; 
+  //find an hadron in the chain of the family of that particle
+  const xAOD::TruthParticle *findHadron(const xAOD::TruthParticle *ptcl);
+  //find a quark in the chain of the family of that particle
+  const xAOD::TruthParticle *findQuark(const xAOD::TruthParticle *ptcl);
+  //find a photon in the chain of the family of that particle
+  const xAOD::TruthParticle *findPhoton(const xAOD::TruthParticle *ptcl);
+  // use to find photon of stable truth electron 
+  const xAOD::TruthParticle *findConvTruthPhoton(const xAOD::TruthParticle *ptcl);
+
+public:
+  // this is a standard constructor
+  PhotonFakeRate() { }
+  PhotonFakeRate(const char *name);
+  virtual ~PhotonFakeRate();
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+  virtual EL::StatusCode finalize();
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(PhotonFakeRate, 1);
+};
+
+#endif // HgammaSandbox_PhotonFakeRate_H

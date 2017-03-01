@@ -1,0 +1,44 @@
+#ifndef HgammaSandbox_FakePhotonsDag_H
+#define HgammaSandbox_FakePhotonsDag_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+#include "HgammaSandbox/OutputTree.h"
+
+class FakePhotonsDag : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+private:
+  // Tree *myTree; //!
+  // TH1 *myHist; //!
+//  HG::OutputTree m_fakeTree; //!
+//  HG::OutputTree m_truthTree; //!
+  HG::OutputTree m_recoPhTree; //!
+  HG::OutputTree m_truthPaTree; //!
+  HG::OutputTree m_truthJetsTree; //!
+  HG::OutputTree m_eventTree; //!
+
+  std::map<int,int> m_fakeMap; //!
+  std::vector<double> getTruthIso(const xAOD::TruthParticle *ptcl, HG::TruthPtcls &stblPtcls);
+  
+public:
+  // this is a standard constructor
+  FakePhotonsDag() { }
+  FakePhotonsDag(const char *name);
+  virtual ~FakePhotonsDag();
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+  virtual EL::StatusCode finalize();
+  
+  TString getPartName(int pdgId);
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(FakePhotonsDag, 1);
+};
+
+#endif // HgammaSandbox_FakePhotonsDag_H

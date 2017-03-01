@@ -1,0 +1,129 @@
+#include "HgammaSandbox/RecoEff.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "HGamAnalysisFramework/TruthUtils.h"
+
+EL::StatusCode RecoEff::createOutput()
+{
+  histoStore()->createTH1F("Ntruth_photons",10,-0.5,9.5,";#it{N}_{truth-photons}");
+  histoStore()->createTH1F("Nreco_photons",20,-0.5,19.5,";#it{N}_{raw-photons}");
+  histoStore()->createTH1F("Nloose_photons",20,-0.5,19.5,";#it{N}_{loose-photons}");
+  histoStore()->createTH1F("Ntight_photons",20,-0.5,19.5,";#it{N}_{tight-photons}");
+
+  TString xlbl(";truth #it{p}_{T#gamma} [GeV]");
+  histoStore()->createTH1F("eta_truth_photon",20,-3,3,";truth #eta_{#gamma}");
+
+  // reconstruction efficiency vs pT
+  // this should ideally be done separately for eta-regions
+  for ( TString etaReg : {"","_ctrl","_fwd"} ) {
+    histoStore()->createTH1F("pT_truth_photon"+etaReg,20,0,100,xlbl);
+
+    histoStore()->createTProfile("eff_anyPhoton_vs_pT"+etaReg,10,0,100,xlbl+";P( photon cluster | true photon )");
+    histoStore()->createTProfile("eff_loosePhoton_vs_pT"+etaReg,10,0,100,xlbl+";P( loose photon | true photon )");
+    histoStore()->createTProfile("eff_tightPhoton_vs_pT"+etaReg,10,0,100,xlbl+";P( tight photon | true photon )");
+
+    histoStore()->createTH1F("pT_truth_photon_anyMatching"+etaReg,20,0,100,xlbl);
+    histoStore()->createTH1F("pT_truth_photon_looseMatching"+etaReg,20,0,100,xlbl);
+    histoStore()->createTH1F("pT_truth_photon_tightMatching"+etaReg,20,0,100,xlbl);
+  }
+
+  return EL::StatusCode::SUCCESS;
+}
+
+EL::StatusCode RecoEff::execute()
+{
+  // not needed, i think ?
+  HgammaAnalysis::execute();
+  
+  // 1. Grab the truth particles
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticle" ).isFailure() ) {
+    Error("execute()", "Failed to retrieve TruthParticle container." );
+    return EL::StatusCode::FAILURE;
+  }
+
+  // 1.a Find the truth photons
+  std::vector<const xAOD::TruthParticle*> truthPhotons;
+  for ( const xAOD::TruthParticle *ptcl : *truthPtcls )
+    if ( HG::isGoodTruthPhoton(ptcl) )
+      truthPhotons.push_back(ptcl);
+
+  // 2. Get a few reco vectors
+  // returns fully corrected photons
+  xAOD::PhotonContainer photons = photonHandler()->getCorrectedContainer();
+  xAOD::PhotonContainer loosePhotons(SG::VIEW_ELEMENTS);
+  xAOD::PhotonContainer tightPhotons(SG::VIEW_ELEMENTS);
+  for ( xAOD::Photon *gam : photons ) {
+    
+    // require loose ID - better to use IsEM tool here ?
+    if (!gam->passSelection("Loose")) continue;
+    loosePhotons.push_back(gam);
+    
+    // require tight ID - better to use IsEM tool here ?
+    if (!gam->passSelection("Tight")) continue;
+    tightPhotons.push_back(gam);
+  }
+  
+  // 3. Do the analysis
+  // 3.a Fill multplicity histograms
+  histoStore()->fillTH1F("Ntruth_photons",truthPhotons.size());
+  histoStore()->fillTH1F("Nreco_photons",photons.size());
+  histoStore()->fillTH1F("Nloose_photons",loosePhotons.size());
+  histoStore()->fillTH1F("Ntight_photons",tightPhotons.size());
+  
+  // check the photon reconstruction efficiency:
+  //   P ( reco | true )
+  // this means we should loop over the truth photons, and
+  // see how often we find a reconstructed photon behind
+  for ( auto t_gam : truthPhotons ) {
+    
+    // get and fill a histo with the truth histo
+    double t_pt=t_gam->pt()/HG::GeV;
+    histoStore()->fillTH1F("pT_truth_photon",t_pt);
+    if (isCentral(t_gam)) histoStore()->fillTH1F("pT_truth_photon_ctrl",t_pt);
+    if (isFwd(t_gam)) histoStore()->fillTH1F("pT_truth_photon_fwd",t_pt);
+    histoStore()->fillTH1F("eta_truth_photon",t_gam->eta());
+
+    // see if the current truth photon match _any_ reco photon
+    bool match(false);
+    for ( xAOD::Photon *reco_y : photons )
+      if (reco_y->p4().DeltaR(t_gam->p4())<0.1) { match=true; break; }
+    fillEffHistos(t_gam,match,"any");
+    
+    match=false;
+    for ( xAOD::Photon *reco_y : loosePhotons )
+      if (reco_y->p4().DeltaR(t_gam->p4())<0.1) { match=true; break; }
+    fillEffHistos(t_gam,match,"loose");
+    
+    match=false;
+    for ( xAOD::Photon *reco_y : tightPhotons )
+      if (reco_y->p4().DeltaR(t_gam->p4())<0.1) { match=true; break; }
+    fillEffHistos(t_gam,match,"tight");
+  }
+
+  return EL::StatusCode::SUCCESS;
+}
+
+#ifndef __CINT__
+bool RecoEff::isCentral(const xAOD::TruthParticle *t_gam) {
+  return fabs(t_gam->eta())<1.37;
+}
+bool RecoEff::isCrack(const xAOD::TruthParticle *t_gam) {
+  return fabs(t_gam->eta())<1.52 && !isCentral(t_gam);
+}
+bool RecoEff::isFwd(const xAOD::TruthParticle *t_gam) {
+  return fabs(t_gam->eta())<2.37&&fabs(t_gam->eta())>1.52;
+}
+
+void RecoEff::fillEffHistos(const xAOD::TruthParticle *t_gam, bool match, TString recoType) {
+  // save aside pT and eta and see if the photon is central
+  double pT = t_gam->pt()/HG::GeV;
+  bool ctrl = isCentral(t_gam), fwd=isFwd(t_gam);
+  histoStore()->fillTProfile("eff_"+recoType+"Photon_vs_pT",pT,match);
+  if (ctrl) histoStore()->fillTProfile("eff_"+recoType+"Photon_vs_pT_ctrl",pT,match);
+  if (fwd)  histoStore()->fillTProfile("eff_"+recoType+"Photon_vs_pT_fwd",pT,match);
+  if (!match) return;
+  histoStore()->fillTH1F("pT_truth_photon_"+recoType+"Matching",pT);
+  if (ctrl) histoStore()->fillTH1F("pT_truth_photon_"+recoType+"Matching_ctrl",pT);
+  if (fwd)  histoStore()->fillTH1F("pT_truth_photon_"+recoType+"Matching_fwd",pT);
+}
+#endif

@@ -1,0 +1,43 @@
+#######
+#
+# Configuration file for Hgamma analyses
+#
+#######
+
+
+##################################
+# 0. Job steering setup
+
+OutputDir:        output/
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HgammaSandbox/HgammaConfig.cfg
+
+
+##################################
+# 1. Photon calibration & smearing settings
+
+PhotonCalib.ESModel:         es2012c
+PhotonCalib.ResolutionType:  SigmaEff90
+
+PhotonHandler.PID:           Tight
+PhotonHandler.EtaCut:        2.37
+PhotonHandler.CrackEtaCut:   true
+PhotonHandler.PtCutGeV:      25.0
+
+
+##################################
+# 2. Jet calibration
+
+
+
+############
+# What to save in the output MxAOD
+
+MxAOD.savePhotons:          true
+MxAOD.Photons.Variables:    pt.eta.phi.m.conv.SandrineIso5.SandrienIso6
+
+
+#
+###############
+

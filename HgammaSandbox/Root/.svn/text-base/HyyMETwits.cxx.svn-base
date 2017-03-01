@@ -1,0 +1,817 @@
+#include "HgammaSandbox/HyyMETwits.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "xAODMissingET/MissingET.h"
+#include "xAODMissingET/MissingETContainer.h"
+#include "HGamAnalysisFramework/OverlapRemovalHandler.h"
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+//Egamma includes
+#include "xAODEgamma/PhotonxAODHelpers.h"
+#include "xAODEgamma/EgammaDefs.h"
+#include "xAODEgamma/EgammaEnums.h"
+#include "xAODEgamma/EgammaxAODHelpers.h"
+// Trigger includes
+
+//#include "xAODTrigger/"
+#include "TrigConfxAOD/xAODConfigTool.h"
+#include "TrigDecisionTool/TrigDecisionTool.h"
+// ETmissHandler
+#include "HgammaSandbox/ETmissHandlerLM.h"
+#include "xAODBase/IParticleHelpers.h"
+// Truth Particle
+#include "xAODTruth/TruthParticleContainer.h"
+#include "xAODTruth/TruthParticleAuxContainer.h"
+#include <assert.h>
+
+using namespace std;
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(HyyMETwits)
+
+
+
+HyyMETwits::HyyMETwits(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+
+
+  do_systematics = false;
+}
+
+
+
+HyyMETwits::~HyyMETwits()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+EL::StatusCode HyyMETwits::initialize ()
+{
+  // Here you do everything that you need to do after the first input
+  // file has been connected and before the first event is processed,
+  // e.g. create additional histograms based on which variables are
+  // available in the input files.  You can also create all of your
+  // histograms and trees in here, but be aware that this method
+  // do not get called if no events are processed.  So any objects
+  // you create here will not be available in the output if you have no
+  // input events.
+  HgammaAnalysis::initialize(); // keep this line!
+
+  // di-photon mass selection  
+  m_myylow          = config()->getNum("HyyMETwits.myyWindow.low"             , 105.0);
+  m_myyhigh         = config()->getNum("HyyMETwits.myyWindow.high"            , 160.0);
+  
+  //Get Sample name
+  SamplePrefix = config()->getStr("HyyMETwits.Sample.name");
+  
+  // set MET level (high, intermediate or low)
+  highMET    = config()->getBool("HyyMETwits.metlevel.High", false);
+  interMET   = config()->getBool("HyyMETwits.metlevel.inter", false);
+  
+  //levelCategories.push_back(InterMet);
+  if(interMET)
+  levelCategories.push_back(InterMet);
+  if(highMET)
+    levelCategories.push_back(HighMet);
+  else if (!highMET && !interMET)
+  {
+    Info("createOutput()", "No Level selected....please select level in the config file");
+    return EL::StatusCode::SUCCESS;
+  }
+  //  calculation of MET with Handler
+  m_eTmissHandlerLM = new HG::ETmissHandlerLM("eTmissHandlerLM");
+  m_eTmissHandlerLM->initialize(*config(), event());    
+  
+  // For MC15
+  m_eTmissHandlerLMMC15 = new HG::ETmissHandlerLMMC15("eTmissHandlerLMMC15");
+  m_eTmissHandlerLMMC15->initialize(*config(), event());
+    
+  return EL::StatusCode::SUCCESS;
+}
+
+
+EL::StatusCode HyyMETwits::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  //histoStore()->createTH1F("m_yy", 60, 110, 140);
+
+    
+  // Creating histograms for the cut flow
+  // Getting sample name
+  SamplePrefix = config()->getStr("HyyMETwits.Sample.name");
+  E_MInfo = config()->getBool("HyyMETwits.ElectronMuon.plots", false);
+  
+  // Setting MET level (high, intermediate)
+  highMET    = config()->getBool("HyyMETwits.metlevel.High", false);
+  interMET   = config()->getBool("HyyMETwits.metlevel.inter", false);
+  
+  //Create level vector
+  std::vector<HyyMETwits::MetLevelCategory> levelCat;
+  if(interMET)
+  levelCat.push_back(InterMet);
+  if(highMET)
+    levelCat.push_back(HighMet);
+  else if (!highMET && !interMET)
+  {
+    Info("createOutput()", "No Level selected....please select level in the config file");
+    return EL::StatusCode::SUCCESS;
+  }
+
+  // Looping over MET levels and creating histograms
+  
+  for(auto levelCategory : levelCat){
+    TString levelPrefix = SamplePrefix + HyyMETwits::getLevelCategoryNAme(levelCategory); // IntMet_ & HighMet_
+    // _________________________photons_______________________________________
+    
+    histoStore()->createTH1F(levelPrefix+"m_yy", 60, 100, 160,"; #it{m}_{yy} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"y1_pt", 60, 0, 200,"; #it{pt}_{y1} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"y2_pt", 40, 0, 200,"; #it{pt}_{y2} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"y1_eta", 50, -5, 5,"; #it{#eta}_{y1}");
+    histoStore()->createTH1F(levelPrefix+"y2_eta", 50, -5, 5,"; #it{#eta}_{y2}");
+    histoStore()->createTH1F(levelPrefix+"yy_eta", 50, -5, 5,"; #it{#eta}_{y2}");
+    histoStore()->createTH1F(levelPrefix+"yy_pt", 60, 0, 200,"; #it{pt}_{y2}");
+    histoStore()->createTH1F(levelPrefix+"deltaR_yy", 10, 0, 6,"; #it{#deltaR}_{yy}");
+    histoStore()->createTH1F(levelPrefix+"deltaphi_yy", 20, 0, 3.1415926,"; #it{#delta#phi}_{yy}");
+    histoStore()->createTH1F(levelPrefix+"deltaeta_yy", 10, 0, 6,"; #it{#delta#eta}_{yy}");
+    histoStore()->createTH1F(levelPrefix+"num_phot", 10, -0.5, 10,";Photon multiplicity");
+    
+    //__________________________all Jets(no selection)_____________________________________________
+   
+    histoStore()->createTH1F(levelPrefix+"num_jets1", 10, -0.5, 9.5,";Jet Multiplicity");
+    histoStore()->createTH1F(levelPrefix+"num_leps1",  10, -0.5, 9.5, ";Lepton Multiplicity");
+    histoStore()->createTH1F(levelPrefix+"jj_pt", 80, 0, 200,";#it{pt}_{jj} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"jj_eta", 20, -5, 5,";#it{#eta}_{jj}");
+    histoStore()->createTH1F(levelPrefix+"j1_pt", 80, 80, 220,";#it{pt}_j1 [GeV]");
+    histoStore()->createTH1F(levelPrefix+"j2_pt", 80, 80, 220,";#it{pt}_j2 [GeV]");
+    histoStore()->createTH1F(levelPrefix+"j1_eta", 50, -5, 5,"; #it{#eta}_j1");
+    histoStore()->createTH1F(levelPrefix+"j2_eta", 50, -5, 5,"; #it{#eta}_j2");
+    
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_CST", 100, 0, 200,"; #it{E}_{T}^{miss,CST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_CST_x", 100, -100., 100.,";#it{E}_{x}^{miss,CST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_CST_y", 100, -100., 100.,";#it{E}_{y}^{miss,CST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_CST_sum", 100, 0, 2000,";#it{#sum} E_{T}^{miss,CST} [GeV]");
+  
+    //_____________________________________MET Plots____________________________________________________________
+    
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_TST", 100, 0, 200,";#it{E}_{T}^{miss,TST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_TST_x", 100, -100., 100.,";#it{E}_{x}^{miss,TST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_TST_y", 100, -100., 100.,";#it{E}_{y}^{miss,TST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_TST_sum", 100, 0, 2000,";#it{#sum} E_{T}^{miss,TST} [GeV]");
+    
+    // MET_Truth_Int  (with Truth particles)
+    if(isMC()){
+      histoStore()->createTH1F(levelPrefix+"met_truth_prt_Int", 40, 0, 200,";truth #it{E}_{T}^{miss} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"MET_Truth_Int",100,0.,200.,";#it{E}_{T}^{miss,Truth} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"MET_Truth_Int_x",100,-100.,100.,";#it{E}_{x}^{miss,Truth} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"MET_Truth_Int_y",100,-100.,100.,";#it{E}_{y}^{miss,Truth} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"MET_Truth_Int_sum",100,0.,2000.,";#it #sum {E}_{T}^{miss,Truth} [GeV]");
+    
+      // MET_Truth_NonInt
+    
+      histoStore()->createTH1F(levelPrefix+"met_truth_prt_NonInt", 40, 0, 200,";truth #it{E}_{T}^{miss} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"MET_Truth_NonInt",100,0.,200.,";#it{E}_{T}^{miss,Truth} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"MET_Truth_NonInt_x",100,-100.,100.,";#it{E}_{x}^{miss,Truth} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"MET_Truth_NonInt_y",100,-100.,100.,";#it{E}_{y}^{miss,Truth} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"MET_Truth_NonInt_sum",100,0.,2000.,";#it #sum {E}_{T}^{miss,Truth} [GeV]");
+    }
+    // MET definitions: ETmissHandler => getRaw & METRebuilder
+    
+    histoStore()->createTH1F(levelPrefix+"MET_getRaw",100,0.,200.,";#it{E}_{T}^{miss,CST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_Rebuilder",200,0.,1000.,";#it{E}_{T}^{miss,TST1} [GeV]"); 
+    
+    histoStore()->createTH1F(levelPrefix+"MET_reb_CST",200,0.,1000.,";#it{E}_{T}^{miss,rebCST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_reb_TST",200,0.,1000.,";#it{E}_{T}^{miss,rebTST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_reb_CST_x",100,-100.,100.,";#it{E}_{x}^{miss,rebCST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_reb_TST_x",100,-100.,100.,";#it{E}_{x}^{miss,rebTST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_reb_CST_y",100,-100.,100.,";#it{E}_{x}^{miss,rebCST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_reb_TST_y",100,-100.,100.,";#it{E}_{x}^{miss,rebTST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_reb_CST_sum",200,0.,2000.,";#it #sum {E}_{T}^{miss,rebCST} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_reb_TST_sum",200,0.,2000.,";#it #sum {E}_{T}^{miss,rebTST} [GeV]");
+
+    // MET definitions: RefGamma,RefJet,SoftClus and PVSoftTrk Etmiss
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_RefGamma",200,0.,1000.,";#it #sum {E}_{T}^{misss,RefGamma} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_RefJet",200,0.,1000.,";#it #sum {E}_{T}^{misss,RefJet} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_SoftClus",200,0.,1000.,";#it #sum {E}_{T}^{misss,SoftClus} [GeV]");
+    histoStore()->createTH1F(levelPrefix+"MET_RefFinal_PVSoftTrk",200,0.,1000.,";#it #sum {E}_{T}^{misss,PVSoftTrk} [GeV]");
+    
+      
+    if(interMET)
+    {
+      // Making plots for intermediate analysis
+      // After Overlap
+      histoStore()->createTH1F(levelPrefix+"num_jets2", 10, -0.5, 9.5,";Jet Multiplicity after overlap");
+      histoStore()->createTH1F(levelPrefix+"num_leps2",  10, -0.5, 9.5, ";Lepton Multiplicity after overlap");
+      histoStore()->createTH1F(levelPrefix+"m_JJ", 200, 0, 200,";#it{m}_{JJ} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"m_YYJJ", 30, 200, 900,";#it{m}_{YYJJ} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"JJ_pt", 80, 0, 200,";#it{pt}_{JJ} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"JJ_eta", 20, -5, 5,";#it{#eta}_{JJ}");
+      histoStore()->createTH1F(levelPrefix+"J1_pt", 80, 80, 220,";#it{pt}_J1 [GeV]");
+      histoStore()->createTH1F(levelPrefix+"J2_pt", 80, 80, 220,";#it{pt}_J2 [GeV]");
+      histoStore()->createTH1F(levelPrefix+"J1_eta", 50, -5, 5,"; #it{#eta}_J1");
+      histoStore()->createTH1F(levelPrefix+"J2_eta", 50, -5, 5,"; #it{#eta}_J2");
+    }
+    
+    if(highMET)
+    {
+      //MAke plots for HighMET anaysis
+      histoStore()->createTH1F(levelPrefix+"metref_final", 50,  0,   1000,    ";METRef_Final [GeV]");
+    }
+    
+    //___________________________________________________________________________________________________________
+    
+    // Flag Electron Muon info if flag is ON
+    
+    if(E_MInfo)
+    {
+      // Muon plots
+      histoStore()->createTH1F(levelPrefix+"num_mu1", 4, -0.5, 5,";Muon Multiplicity");
+      histoStore()->createTH1F(levelPrefix+"mumu_pt", 70, 0, 200,";#it{pt}_{mu} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"mumu_eta", 20, -5, 5,";#it{#eta}_mu");
+      histoStore()->createTH1F(levelPrefix+"mu1_pt", 70, 0, 200,";#it{pt}_mu1 [GeV]");
+      histoStore()->createTH1F(levelPrefix+"mu2_pt", 70, 0, 200,";#it{pt}_mu2 [GeV]");
+      histoStore()->createTH1F(levelPrefix+"mu1_eta", 20, -5, 5,";#it{#eta}_mu1");
+      histoStore()->createTH1F(levelPrefix+"mu2_eta", 20, -5, 5,";#it{#eta}_mu2");
+       
+      // Electron plots 
+      histoStore()->createTH1F(levelPrefix+"num_el1", 4, -0.5, 5,";Electron Multiplicity");
+      histoStore()->createTH1F(levelPrefix+"els_pt", 70, 0, 200,";#it{pt}_{els} [GeV]");
+      histoStore()->createTH1F(levelPrefix+"els_eta", 20, -5, 5,";#it{#eta}_els");
+      histoStore()->createTH1F(levelPrefix+"el1_pt", 70, 0, 200,";#it{pt}_el1 [GeV]");
+      histoStore()->createTH1F(levelPrefix+"el2_pt", 70, 0, 200,";#it{pt}_el2 [GeV]");
+      histoStore()->createTH1F(levelPrefix+"el1_eta", 20, -5, 5,";#it{#eta}_el1");
+      histoStore()->createTH1F(levelPrefix+"el2_eta", 20, -5, 5,";#it{#eta}_el2");
+      //Electron & Muon Cutflow
+      int ME_Ncuts = m_mecutLabels.size();
+      histoStore()->createTH1F(levelPrefix+"MuonElectronCount2", ME_Ncuts,-0.5,ME_Ncuts-0.5);
+      TAxis *axis4 = histoStore()->getTH1F(levelPrefix+"MuonElectronCount2")->GetXaxis();
+      for (int bin = 1; bin <= ME_Ncuts; bin++)
+        axis4->SetBinLabel(bin,m_mecutLabels[bin-1]);
+    
+    }
+    
+    // event cutflow
+    int E_Ncuts = m_cutLabels.size();
+    histoStore()->createTH1F(levelPrefix+"EventCutFlow",E_Ncuts,-0.5,E_Ncuts-0.5);
+    TAxis *axis3 = histoStore()->getTH1F(levelPrefix+"EventCutFlow")->GetXaxis();
+    for (int bin = 1; bin <= E_Ncuts; bin++)
+      axis3->SetBinLabel(bin,m_cutLabels[bin-1]);
+  
+  }
+      
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode HyyMETwits::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+  //xAOD::PhotonContainer photons = photonHandler()->getCorrectedContainer();
+  //if (photons.size() < 2) return EL::StatusCode::SUCCESS;
+  //TLorentzVector h = photons[0]->p4() + photons[1]->p4();
+  //histoStore()->fillTH1F("m_yy", h.M()/HG::GeV);
+  
+  //________________________________________________________________________________
+  //                    Truth Photon
+  /*
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticle" ).isFailure() ) {
+    Error("execute()", "Failed to retrieve TruthParticle container." );
+    return EL::StatusCode::FAILURE;
+  }
+
+  // 1.a Find the truth photons
+  std::vector<const xAOD::TruthParticle*> truthPhotons;
+  for ( const xAOD::TruthParticle *ptcl : *truthPtcls )
+    //if ( HG::isGoodTruthPhoton(ptcl) )
+      truthPhotons.push_back(ptcl);
+  //cut on pt of the truth photons
+  std::vector<const xAOD::TruthParticle*> tphotons20;
+  for (auto tgam : truthPhotons )
+    if (tgam->pt()>20*HG::GeV)tphotons20.push_back(tgam);
+  */
+  //____________________________________________________________________________________________________________________________
+   // Fetch photons 
+  
+  xAOD::PhotonContainer photons_all = photonHandler()->getCorrectedContainer();
+  xAOD::PhotonContainer photons = photonHandler()->applySelection(photons_all); 
+  
+    //----------------------------better way?--------------------------------------------------
+    
+    // Diphoton check (if false,don't do anything)
+    
+  if(interMET){
+    TString levelPrefix = SamplePrefix + HyyMETwits::getLevelCategoryNAme(InterMet);
+    fillEventCutFlow(levelPrefix,ALLEVTS);
+    eventHandler()->pass();
+    fillEventCutFlow(levelPrefix,GOODEVT);
+    if(photons.size() < 2) return EL::StatusCode::SUCCESS;
+      fillEventCutFlow(levelPrefix,DIPHT);
+        
+    TLorentzVector y1 = photons[0]->p4(), y2 = photons[1]->p4();  // Selecting the 2 leading photons
+    y1 *=HG::invGeV;
+    y2 *=HG::invGeV;
+    TLorentzVector yy =y1+y2;
+    if(yy.M() < m_myylow || yy.M() > m_myyhigh ) return EL::StatusCode::SUCCESS; // di-photon mass must be in wind
+      fillEventCutFlow(levelPrefix,MASSWIN); // Adding the mass wind cut
+    if(y1.Pt()/yy.M() > 0.35)// return EL::StatusCode::SUCCESS;
+      fillEventCutFlow(levelPrefix,Y1PT);
+    if(y2.Pt()/yy.M() > 0.25)// return EL::StatusCode::SUCCESS;
+      fillEventCutFlow(levelPrefix,Y2PT);
+    if(yy.Pt() < 30)//return EL::StatusCode::SUCCESS;
+      fillEventCutFlow(levelPrefix,YY30);
+  }
+  
+  if(highMET){
+    TString levelPrefix = SamplePrefix + HyyMETwits::getLevelCategoryNAme(HighMet);
+    fillEventCutFlow(levelPrefix,ALLEVTS);
+    eventHandler()->pass();
+    fillEventCutFlow(levelPrefix,GOODEVT);
+    if(photons.size() < 2) return EL::StatusCode::SUCCESS;
+      fillEventCutFlow(levelPrefix,DIPHT);
+    
+    TLorentzVector y1 = photons[0]->p4(), y2 = photons[1]->p4();  // Selecting the 2 leading photons
+    y1 *=HG::invGeV;
+    y2 *=HG::invGeV;
+        
+    TLorentzVector yy =y1+y2;
+    if(yy.M() < m_myylow || yy.M() > m_myyhigh ) return EL::StatusCode::SUCCESS; // di-photon mass must be in wind
+    //Add mass window cut.....
+    if(y1.Pt()/yy.M() > 0.35)
+      fillEventCutFlow(levelPrefix,Y1PT);
+    if(y2.Pt()/yy.M() > 0.25)
+      fillEventCutFlow(levelPrefix,Y2PT);
+    if(yy.Pt() < 40)  return EL::StatusCode::SUCCESS;
+      fillEventCutFlow(levelPrefix,YY30);
+  }
+    
+    
+    
+ 
+    // Fetch jets 
+  xAOD::JetContainer jets_all = jetHandler()->getCorrectedContainer();
+  // Fetch mouns
+  xAOD::MuonContainer muons_all = muonHandler()->getCorrectedContainer();
+  // Fetch electrons
+  xAOD::ElectronContainer electrons_all = electronHandler()->getCorrectedContainer();
+  
+  const xAOD::JetContainer* jets_a = 0;
+  if(event()->retrieve( jets_a, "AntiKt4EMTopoJets" ).isFailure()){
+    Error("execute()", "Failed to retrieve AntiKt4EMTopoJets container. Exiting." );
+    return EL::StatusCode::FAILURE;
+  }
+    
+  bool setLinks = xAOD::setOriginalObjectLink(*jets_a, jets_all);
+  if(!setLinks){
+    Error("Failed to set original object links on " ,"setlinks");
+  }
+ 
+  xAOD::JetContainer jets =jetHandler()->applySelection(jets_all);
+  xAOD::MuonContainer muons = muonHandler()->applySelection(muons_all);
+  xAOD::ElectronContainer electrons = electronHandler()->applySelection(electrons_all);
+  // Do Met analysis.....
+  std::string type1 = "CST";
+  xAOD::MissingET met_reb_CST= eTmissHandlerLMMC15()->ETmissRebuilder(photons,jets,electrons,muons,type1);
+    
+  std::string type2 = "TST";
+  xAOD::MissingET met_reb_TST= eTmissHandlerLMMC15()->ETmissRebuilder(photons,jets,electrons,muons,type2);         
+  //_______________Number of primary vertex______________________________________________________
+  const xAOD::VertexContainer *primaryVtxs =0;
+  if( event()->retrieve(primaryVtxs,"PrimaryVertices").isFailure()){
+    HG::fatal("Cannot access PrimaryVertices");
+  }
+  
+  int nPrimaryVtxs = primaryVtxs->size();
+  double averageIPC = eventInfo()->averageInteractionsPerCrossing();
+    
+  //__________________________________________________________________________________________________________________
+  // MET Analysis
+  // MET_RefFinal_CST
+    
+  if(interMET){ 
+    TString levelPrefix = SamplePrefix + HyyMETwits::getLevelCategoryNAme(InterMet);
+    if(met_reb_CST.met()*0.001 < 30) return EL::StatusCode::SUCCESS; // dont continue if MET cut fails
+      fillEventCutFlow(levelPrefix, METCST);            // change name to a general name
+        
+    //-----------------------------------MET calculations----------------------------------------------------
+    
+    
+    // MET Truth int and non int
+    // ETmiss Truth container
+    const xAOD::MissingET* met_Truth_NonInt;
+    const xAOD::MissingET* met_Truth_Int;
+    
+     if (isMC()){
+      const xAOD::MissingETContainer* met_container_Truth = 0;
+      if(event()->retrieve( met_container_Truth, "MET_Truth" ).isFailure()){
+        Error("execute()", "Failed to retrieve MET_Truth container. Exiting." );
+        return EL::StatusCode::FAILURE;
+      }
+       // MET_Truth: ETmiss Truth computation
+   
+      met_Truth_NonInt = (*met_container_Truth)["NonInt"];
+      met_Truth_Int = (*met_container_Truth)["Int"];
+      if(!met_Truth_NonInt){
+        Error("execute()", "Couldn't find MET_Truth NonInt. Exiting." );
+        return EL::StatusCode::FAILURE;
+      }
+      if(!met_Truth_Int){
+        Error("execute()", "Couldn't find MET_Truth Int. Exiting." );
+        return EL::StatusCode::SUCCESS;
+      }
+    }
+    // ETmiss MET_Reference_AntiKt4LCTopo container
+    const xAOD::MissingETContainer* met_container_RefFinal = 0;
+    if ( event()->retrieve(met_container_RefFinal, "MET_Reference_AntiKt4EMTopo" ).isFailure() ){
+      Error("execute()", "Failed to retrieve MET_Reference_AntiKt4EMTopo container. Exiting." );
+      return EL::StatusCode::FAILURE;
+    }
+        
+    // ETmiss MET_Reference_AntiKt4LCTopo: RefEle computation
+    const xAOD::MissingET* met_RefFinal_RefEle = (*met_container_RefFinal)["RefEle"];
+    if(!met_RefFinal_RefEle){
+      Error("execute()", "Couldn't find MET_Reference_AntiKt4LCTopo RefEle. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+    // ETmiss MET_Reference_AntiKt4LCTopo: RefGamma computation
+    const xAOD::MissingET* met_RefFinal_RefGamma = (*met_container_RefFinal)["RefGamma"];
+    if(!met_RefFinal_RefGamma){
+      Error("execute()", "Couldn't find MET_Reference_AntiKt4LCTopo RefGamma. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+    
+    // ETmiss MET_Reference_AntiKt4LCTopo: RefTau computation
+    const xAOD::MissingET* met_RefFinal_RefTau = (*met_container_RefFinal)["RefTau"];
+    if(!met_RefFinal_RefTau){
+      Error("execute()", "Couldn't find MET_Reference_AntiKt4LCTopo RefTau. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+        
+    // ETmiss MET_Reference_AntiKt4LCTopo: RefJet computation
+    const xAOD::MissingET* met_RefFinal_RefJet = (*met_container_RefFinal)["RefJet"];
+    if(!met_RefFinal_RefJet){
+      Error("execute()", "Couldn't find MET_Reference_AntiKt4LCTopo RefJet. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+        
+    // ETmiss MET_Reference_AntiKt4LCTopo: Muons computation
+    const xAOD::MissingET* met_RefFinal_Muons = (*met_container_RefFinal)["Muons"];
+    if(!met_RefFinal_Muons){
+      Error("execute()", "Couldn't find MET_Reference_AntiKt4LCTopo Muons. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+        
+    // ETmiss MET_Reference_AntiKt4LCTopo: SoftClus computation (Cluster-based Soft Term = CST)
+    const xAOD::MissingET* met_RefFinal_SoftClus = (*met_container_RefFinal)["SoftClus"];
+    if(!met_RefFinal_SoftClus){
+      Error("execute()", "Couldn't find MET_Reference_AntiKt4LCTopo SoftClus. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+        
+    // ETmiss MET_Reference_AntiKt4LCTopo: PVSoftTrk computation (Track-based Soft Term = TST)
+    const xAOD::MissingET* met_RefFinal_PVSoftTrk = (*met_container_RefFinal)["PVSoftTrk"];
+    if(!met_RefFinal_PVSoftTrk){
+      Error("execute()", "Couldn't find MET_Reference_AntiKt4LCTopo PVSoftTrk. Exiting." );
+      return EL::StatusCode::SUCCESS;
+    }
+    
+    MET_RefFinal_CST_Ex=0.;MET_RefFinal_CST_Ey=0.;MET_RefFinal_CST=0.;
+    MET_RefFinal_TST_Ex=0.;MET_RefFinal_TST_Ey=0.;MET_RefFinal_TST=0.;MET_RefFinal_TST_sum=0.;
+    
+    // Do analysis based on selected level
+    // Plot photon/Jet(do jet cat/electron/muon
+    TLorentzVector y1 = photons[0]->p4(), y2 = photons[1]->p4();  // Selecting the 2 leading photons
+    y1 *=HG::invGeV;
+    y2 *=HG::invGeV;
+    for(auto levelCategory : levelCategories){
+      TString levelPrefix = SamplePrefix + HyyMETwits::getLevelCategoryNAme(levelCategory);
+      // Plot and save photon info
+      fill_savePhotonHistos(levelPrefix,y1,y2);
+      histoStore()->fillTH1F(levelPrefix+"num_phot",photons.size());
+      eventHandler()->storeVar(levelPrefix+"num_phot",photons.size());
+      if(interMET){
+         //Make plots for INTERMET Analysis
+       }
+      if(highMET){
+         //MAke plots for HighMET anaysis
+       }
+    }
+        
+    // MET_RefFinal_CST computaion by hand
+    
+    MET_RefFinal_CST_Ex = met_RefFinal_RefEle->mpx() + met_RefFinal_RefGamma->mpx() + met_RefFinal_RefTau->mpx() + met_RefFinal_Muons->mpx() + met_RefFinal_RefJet->mpx() + met_RefFinal_SoftClus->mpx();
+       
+    MET_RefFinal_CST_Ey = met_RefFinal_RefEle->mpy() + met_RefFinal_RefGamma->mpy() + met_RefFinal_RefTau->mpy() + met_RefFinal_Muons->mpy() + met_RefFinal_RefJet->mpy() + met_RefFinal_SoftClus->mpy();
+        
+    MET_RefFinal_CST = TMath::Sqrt(MET_RefFinal_CST_Ex * MET_RefFinal_CST_Ex + MET_RefFinal_CST_Ey * MET_RefFinal_CST_Ey)*0.001;
+       
+    MET_RefFinal_CST_sum = (met_RefFinal_RefEle->sumet() + met_RefFinal_RefGamma->sumet() + met_RefFinal_RefTau->sumet() + met_RefFinal_Muons->sumet() + met_RefFinal_RefJet->sumet() +met_RefFinal_SoftClus->sumet())*0.001;
+        
+    MET_RefFinal_TST_Ex = met_RefFinal_RefEle->mpx() + met_RefFinal_RefGamma->mpx() + met_RefFinal_RefTau->mpx() + met_RefFinal_Muons->mpx() + met_RefFinal_RefJet->mpx() + met_RefFinal_PVSoftTrk->mpx();
+       
+    MET_RefFinal_TST_Ey = met_RefFinal_RefEle->mpy() + met_RefFinal_RefGamma->mpy() + met_RefFinal_RefTau->mpy() + met_RefFinal_Muons->mpy() + met_RefFinal_RefJet->mpy() + met_RefFinal_PVSoftTrk->mpy();
+        
+    MET_RefFinal_TST = TMath::Sqrt(MET_RefFinal_TST_Ex * MET_RefFinal_TST_Ex + MET_RefFinal_TST_Ey *MET_RefFinal_TST_Ey)*0.001;
+        
+    // TST Sum Et
+       
+    MET_RefFinal_TST_sum = (met_RefFinal_RefEle->sumet() + met_RefFinal_RefGamma->sumet() + met_RefFinal_RefTau->sumet() + met_RefFinal_Muons->sumet() + met_RefFinal_RefJet->sumet() +met_RefFinal_PVSoftTrk->sumet())*0.001;
+       
+        
+    // Plotting and saving MET info
+    // CST by hand
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_CST", MET_RefFinal_CST);
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_CST_x", MET_RefFinal_CST_Ex*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_CST_y", MET_RefFinal_CST_Ey*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_CST_sum", MET_RefFinal_CST_sum);
+    //histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_CST_phi", MET_RefFinal_CST->phi()*0.001);
+        
+    eventHandler()->storeVar(levelPrefix+"MET_RefFinal_CST", MET_RefFinal_CST);
+    eventHandler()->storeVar(levelPrefix+"MET_RefFinal_CST_x", MET_RefFinal_CST_Ex*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_RefFinal_CST_y", MET_RefFinal_CST_Ey*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_RefFinal_CST_sum", MET_RefFinal_CST_sum);
+    //eventHandler()->storeVar(levelPrefix+"MET_RefFinal_CST_phi", MET_RefFinal_CST->phi()*0.001);
+        
+       
+    //_________________________________________________________________________________________________
+       
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_TST", MET_RefFinal_TST);
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_TST_x", MET_RefFinal_TST_Ex*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_TST_y", MET_RefFinal_TST_Ey*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_TST_sum", MET_RefFinal_TST_sum);
+        
+    eventHandler()->storeVar(levelPrefix+"MET_RefFinal_TST", MET_RefFinal_TST);
+    eventHandler()->storeVar(levelPrefix+"MET_RefFinal_TST_x", MET_RefFinal_TST_Ex*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_RefFinal_TST_y", MET_RefFinal_TST_Ey*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_RefFinal_TST_sum", MET_RefFinal_TST_sum);
+        
+        
+    histoStore()->fillTH1F(levelPrefix+"MET_reb_CST",met_reb_CST.met()*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_reb_TST",met_reb_TST.met()*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_reb_CST_x",met_reb_CST.mpx()*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_reb_TST_x",met_reb_TST.mpx()*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_reb_CST_y",met_reb_CST.mpy()*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_reb_TST_y",met_reb_TST.mpy()*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_reb_CST_sum",met_reb_CST.sumet()*0.001);
+    histoStore()->fillTH1F(levelPrefix+"MET_reb_TST_sum",met_reb_TST.sumet()*0.001);
+        
+    eventHandler()->storeVar(levelPrefix+"MET_reb_CST",met_reb_CST.met()*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_reb_TST",met_reb_TST.met()*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_reb_CST_x",met_reb_CST.mpx()*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_reb_TST_x",met_reb_TST.mpx()*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_reb_CST_y",met_reb_CST.mpy()*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_reb_TST_y",met_reb_TST.mpy()*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_reb_CST_sum",met_reb_CST.sumet()*0.001);
+    eventHandler()->storeVar(levelPrefix+"MET_reb_TST_sum",met_reb_TST.sumet()*0.001);
+       
+    // ETmiss Histos: Etmiss RefGamma
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_RefGamma",met_RefFinal_RefGamma->met()*0.001);
+    
+    // ETmiss Histos: Etmiss RefJet
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_RefJet",met_RefFinal_RefJet->met()*0.001);
+    
+    // ETmiss Histos: Etmiss SoftClus
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_SoftClus",met_RefFinal_SoftClus->met()*0.001);
+        
+    // ETmiss Histos: Etmiss PVSoftTrk
+    histoStore()->fillTH1F(levelPrefix+"MET_RefFinal_PVSoftTrk",met_RefFinal_PVSoftTrk->met()*0.001);
+    
+    //_______________________________________________________________________________________________________
+    // MET_Truth_Int  (with Truth particles)
+    //histoStore()->fillTH1F(levelPrefix+"met_truth_prt_Int",met_Truth_NonInt);
+    if(isMC()){    
+      histoStore()->fillTH1F(levelPrefix+"MET_Truth_Int", met_Truth_NonInt->met()*0.001);
+      histoStore()->fillTH1F(levelPrefix+"MET_Truth_Int_x",met_Truth_NonInt->mpx()*0.001);
+      histoStore()->fillTH1F(levelPrefix+"MET_Truth_Int_y",met_Truth_NonInt->mpy()*0.001);
+      histoStore()->fillTH1F(levelPrefix+"MET_Truth_Int_sum",met_Truth_NonInt->sumet()*0.001);
+        
+      eventHandler()->storeVar(levelPrefix+"MET_Truth_Int", met_Truth_NonInt->met()*0.001);
+      eventHandler()->storeVar(levelPrefix+"MET_Truth_Int_x",met_Truth_NonInt->mpx()*0.001);
+      eventHandler()->storeVar(levelPrefix+"MET_Truth_Int_y",met_Truth_NonInt->mpy()*0.001);
+      eventHandler()->storeVar(levelPrefix+"MET_Truth_Int_sum",met_Truth_NonInt->sumet()*0.001);
+        
+      // MET_Truth_NonInt
+       
+      // histoStore()->fillTH1F(levelPrefix+"met_truth_prt_NonInt", met_Truth_Int);
+        
+      histoStore()->fillTH1F(levelPrefix+"MET_Truth_NonInt",met_Truth_Int->met()*0.001);
+      histoStore()->fillTH1F(levelPrefix+"MET_Truth_NonInt_x",met_Truth_Int->mpx()*0.001);
+      histoStore()->fillTH1F(levelPrefix+"MET_Truth_NonInt_y",met_Truth_Int->mpy()*0.001);
+      histoStore()->fillTH1F(levelPrefix+"MET_Truth_NonInt_sum",met_Truth_Int->sumet()*0.001);
+        
+      eventHandler()->storeVar(levelPrefix+"MET_Truth_NonInt",met_Truth_Int->met()*0.001);
+      eventHandler()->storeVar(levelPrefix+"MET_Truth_NonInt_x",met_Truth_Int->mpx()*0.001);
+      eventHandler()->storeVar(levelPrefix+"MET_Truth_NonInt_y",met_Truth_Int->mpy()*0.001);
+      eventHandler()->storeVar(levelPrefix+"MET_Truth_NonInt_sum",met_Truth_Int->sumet()*0.001);
+    }
+    // PV info
+    eventHandler()->storeVar(levelPrefix+"nPrimaryVtxs",nPrimaryVtxs);
+    eventHandler()->storeVar(levelPrefix+"averageIPC",averageIPC);
+  }
+  if(highMET){
+    TString levelPrefix = SamplePrefix + HyyMETwits::getLevelCategoryNAme(HighMet);
+    //MET: use MET_RefFinal_CST out-of-the-box for now
+	   const xAOD::MissingETContainer* met = 0;
+    if(!event()->retrieve( met, "MET_RefFinal").isSuccess()){
+	     Error("execute()", "Failed to retrieve MET_RefFinal container. Exiting.");
+      return EL::StatusCode::FAILURE;
+	   }
+    xAOD::MissingETContainer::const_iterator met_it = met->find("Final");
+    if(met_it == met->end()){
+      std::cerr << "No RefFinal inside MET container" << std::endl;
+    }
+    double met_ana = (*met_it)->met()*HG::invGeV;
+    if(met_ana < 40) return EL::StatusCode::SUCCESS;
+      fillEventCutFlow(levelPrefix,METCST); //change name to a general name
+    histoStore()->fillTH1F(levelPrefix+"metref_final", met_ana);
+    eventHandler()->storeVar(levelPrefix+"metref_final", met_ana);
+  }
+    
+  //letpon info. for interMET analysis 
+ 
+  // flag Electron Muon info if flag is ON
+  
+  if(E_MInfo && interMET){
+    TString levelPrefix = SamplePrefix + HyyMETwits::getLevelCategoryNAme(InterMet);
+    
+    // Plotting and saving muon info
+    if(muons_all.size()>=2)
+      fillMuonElectronCutFlow(levelPrefix,ALLMUN);
+    if(muons.size()>=2){
+      fillMuonElectronCutFlow(levelPrefix,MUN2);
+      histoStore()->fillTH1F(levelPrefix+"num_mu1",muons.size());
+    
+      TLorentzVector mu1 = muons[0]->p4(), mu2 = muons[1]->p4();  // Selecting the 2 leading muons
+      mu1 *=HG::invGeV;
+      mu2 *=HG::invGeV;
+      TLorentzVector mumu = mu1+mu2;
+        
+      histoStore()->fillTH1F(levelPrefix+"mumu_pt",mumu.Pt());
+      histoStore()->fillTH1F(levelPrefix+"mumu_eta",mumu.Eta());
+      histoStore()->fillTH1F(levelPrefix+"mu1_pt",mu1.Pt());
+      histoStore()->fillTH1F(levelPrefix+"mu2_pt",mu2.Pt());
+      histoStore()->fillTH1F(levelPrefix+"mu1_eta",mu1.Eta());
+      histoStore()->fillTH1F(levelPrefix+"mu2_eta",mu2.Eta());
+      //To save to output xAOD
+      eventHandler()->storeVar(levelPrefix+"mumu_pt",mumu.Pt());
+      eventHandler()->storeVar(levelPrefix+"mumu_eta",mumu.Eta());
+      eventHandler()->storeVar(levelPrefix+"mu1_pt",mu1.Pt());
+      eventHandler()->storeVar(levelPrefix+"mu2_pt",mu2.Pt());
+      eventHandler()->storeVar(levelPrefix+"mu1_eta",mu1.Eta());
+      eventHandler()->storeVar(levelPrefix+"mu2_eta",mu2.Eta());
+    }
+    
+    //Plot and save electron info
+    
+    if(electrons_all.size()>=2)
+      fillMuonElectronCutFlow(levelPrefix,ALLELE);
+    if(electrons.size()>=2){
+      fillMuonElectronCutFlow(levelPrefix,ELE2);
+      histoStore()->fillTH1F(levelPrefix+"num_el1",electrons.size());
+      
+      TLorentzVector el1 = electrons[0]->p4(), el2 = electrons[1]->p4();  // Selecting the 2 leading electrons
+      el1 *=HG::invGeV;
+      el2 *=HG::invGeV;
+      TLorentzVector ee = el1+el2;
+        
+      histoStore()->fillTH1F(levelPrefix+"els_pt",ee.Pt());
+      histoStore()->fillTH1F(levelPrefix+"els_eta",ee.Eta());
+      histoStore()->fillTH1F(levelPrefix+"el1_pt",el1.Pt());
+      histoStore()->fillTH1F(levelPrefix+"el2_pt",el2.Pt());
+      histoStore()->fillTH1F(levelPrefix+"el1_eta",el1.Eta());
+      histoStore()->fillTH1F(levelPrefix+"el2_eta",el2.Eta());      
+        
+      // Saving lepton information before overlap removal
+      
+      int n_electrons = electrons.size();
+      int n_muons = muons.size();
+      int n_leptons = n_electrons + n_muons;
+      histoStore()->fillTH1F(levelPrefix+"num_leps1", n_leptons);
+     
+      // Saving to output xAOD
+      
+      eventHandler()->storeVar(levelPrefix+"els_pt",ee.Pt());
+      eventHandler()->storeVar(levelPrefix+"els_eta",ee.Eta());
+      eventHandler()->storeVar(levelPrefix+"el1_pt",el1.Pt());
+      eventHandler()->storeVar(levelPrefix+"el2_pt",el2.Pt());
+      eventHandler()->storeVar(levelPrefix+"el1_eta",el1.Eta());
+      eventHandler()->storeVar(levelPrefix+"el2_eta",el2.Eta());
+      eventHandler()->storeVar(levelPrefix+"num_leps1",n_leptons);
+    }
+  } 
+  
+  overlapHandler()->removeOverlap(photons,jets,electrons,muons); 
+  
+  if(interMET){
+    TString levelPrefix = SamplePrefix + HyyMETwits::getLevelCategoryNAme(InterMet);
+    // do Jet Cat. here 
+    if(jets.size()>=2){
+      histoStore()->fillTH1F(levelPrefix+"num_jets2",jets.size());
+        
+      TLorentzVector J1 = jets[0]->p4(), J2 = jets[1]->p4();  // Selecting the 2 leading jets
+      J1 *=HG::invGeV;
+      J2 *=HG::invGeV;
+      TLorentzVector JJ = J1+J2;
+        
+      histoStore()->fillTH1F(levelPrefix+"JJ_pt",JJ.Pt());
+      histoStore()->fillTH1F(levelPrefix+"JJ_eta",JJ.Eta());
+      histoStore()->fillTH1F(levelPrefix+"J1_pt",J1.Pt());
+      histoStore()->fillTH1F(levelPrefix+"J2_pt",J2.Pt());
+      histoStore()->fillTH1F(levelPrefix+"J1_eta",J1.Eta());
+      histoStore()->fillTH1F(levelPrefix+"J2_eta",J2.Eta());
+      histoStore()->fillTH1F(levelPrefix+"m_JJ",JJ.M());
+      
+      // save info
+      eventHandler()->storeVar(levelPrefix+"JJ_pt",JJ.Pt());
+      eventHandler()->storeVar(levelPrefix+"JJ_eta",JJ.Eta());
+      eventHandler()->storeVar(levelPrefix+"J1_pt",J1.Pt());
+      eventHandler()->storeVar(levelPrefix+"J2_pt",J2.Pt());
+      eventHandler()->storeVar(levelPrefix+"J1_eta",J1.Eta());
+      eventHandler()->storeVar(levelPrefix+"J2_eta",J2.Eta());
+      eventHandler()->storeVar(levelPrefix+"m_JJ",JJ.M());
+    }
+  
+  // Saving lepton information after overlap removal
+  
+    int n_electrons = electrons.size();
+    int n_muons = muons.size();
+    int n_leptons = n_electrons + n_muons;
+    histoStore()->fillTH1F(levelPrefix+"num_leps2", n_leptons);
+    eventHandler()->storeVar(levelPrefix+"num_leps2", n_leptons);
+  
+  }
+  
+  // Writing xAOD files  
+  eventHandler()->writeVars();
+  event()->fill();
+  return EL::StatusCode::SUCCESS;
+ }
+  
+  
+// helper functions
+
+//____________________________________________________________________________
+
+void HyyMETwits::fillEventCutFlow(TString Prefix, int binNum){
+  histoStore()->fillTH1F(Prefix+"EventCutFlow",binNum);  
+}
+
+//____________________________________________________________________
+
+void HyyMETwits::fillMuonElectronCutFlow(TString Prefix, int binNum){
+  histoStore()->fillTH1F(Prefix+"MuonElectronCount2",binNum);  
+}
+  
+//_____________________________________________________________________
+
+TString HyyMETwits::getLevelCategoryNAme(HyyMETwits::MetLevelCategory level){
+  TString levelPrefix = "IntMet_";
+  if(level == HighMet)
+    levelPrefix = "HighMet_";
+     
+  return levelPrefix;
+}
+void HyyMETwits::fill_savePhotonHistos(TString histPrefix,TLorentzVector y1, TLorentzVector y2){
+  
+  TLorentzVector yy =y1+y2;
+  histoStore()->fillTH1F(histPrefix+"m_yy",yy.M());
+  histoStore()->fillTH1F(histPrefix+"yy_pt",yy.Pt());
+  histoStore()->fillTH1F(histPrefix+"y1_pt",y1.Pt());
+  histoStore()->fillTH1F(histPrefix+"y2_pt",y2.Pt());
+  histoStore()->fillTH1F(histPrefix+"y1_eta", y1.Eta());
+  histoStore()->fillTH1F(histPrefix+"y2_eta", y2.Eta());
+  histoStore()->fillTH1F(histPrefix+"yy_eta", yy.Eta());
+  histoStore()->fillTH1F(histPrefix+"deltaR_yy",y1.DeltaR(y2));
+  histoStore()->fillTH1F(histPrefix+"deltaphi_yy",fabs(y1.DeltaPhi(y2)));
+  histoStore()->fillTH1F(histPrefix+"deltaeta_yy",fabs(y1.Eta()-y2.Eta()));
+   
+  // To save to output xAOD    
+  
+  eventHandler()->storeVar(histPrefix+"m_yy",yy.M());
+  eventHandler()->storeVar(histPrefix+"yy_pt",yy.Pt());
+  eventHandler()->storeVar(histPrefix+"y1_pt",y1.Pt());
+  eventHandler()->storeVar(histPrefix+"y2_pt",y2.Pt());
+  eventHandler()->storeVar(histPrefix+"y1_eta", y1.Eta());
+  eventHandler()->storeVar(histPrefix+"y2_eta", y2.Eta());
+  eventHandler()->storeVar(histPrefix+"yy_eta", yy.Eta());
+  eventHandler()->storeVar(histPrefix+"deltaR_yy",y1.DeltaR(y2));
+  eventHandler()->storeVar(histPrefix+"deltaphi_yy",fabs(y1.DeltaPhi(y2)));
+  eventHandler()->storeVar(histPrefix+"deltaeta_yy",fabs(y1.Eta()-y2.Eta()));
+}

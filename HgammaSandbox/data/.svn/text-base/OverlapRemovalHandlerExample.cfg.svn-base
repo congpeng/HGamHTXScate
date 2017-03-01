@@ -1,0 +1,30 @@
+########"
+#
+# Configuration file for /afs/cern.ch/user/k/kaicheng/Desktop/HGamORLocalTag/HgammaSandbox OverlapRemovalHandlerExample analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        OverlapRemovalHandlerExample_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/data/HgammaConfig.cfg
+
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD

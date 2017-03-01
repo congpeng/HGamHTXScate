@@ -1,0 +1,226 @@
+#include "HgammaSandbox/ETmissHandlerExample.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+#include "xAODBase/IParticleHelpers.h"
+
+// MET EDM
+#include "xAODMissingET/MissingET.h"
+#include "xAODMissingET/MissingETContainer.h"
+
+#include "HgammaSandbox/OverlapRemovalHandlerExample.h"
+
+using namespace std;
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(ETmissHandlerExample)
+
+
+
+ETmissHandlerExample::ETmissHandlerExample(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+
+  m_eventCounter = 0;
+
+}
+
+
+
+ETmissHandlerExample::~ETmissHandlerExample()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+//The following initialize() is for testing the association utils package. No need for using the Overlap Removal Handler 
+EL::StatusCode ETmissHandlerExample::initialize()
+{
+  HgammaAnalysis::initialize();
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+EL::StatusCode ETmissHandlerExample::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  //histoStore()->createTH1F("m_yy", 60, 110, 140);
+
+  // MET definitions: Etmiss
+  /*
+  histoStore()->createTH1F("MET_RefFinal_CST",200,0.,1000.,";#it{E}_{T}^{misss,CST} [GeV]");
+  histoStore()->createTH1F("MET_RefFinal_TST",200,0.,1000.,";#it{E}_{T}^{misss,TST} [GeV]");
+  histoStore()->createTH1F("MET_Truth",200,0.,1000.,";#it{E}_{T}^{misss,Truth} [GeV]");
+  histoStore()->createTH1F("MET_reb_CST",200,0.,1000.,";#it{E}_{T}^{misss,rebCST} [GeV]");
+  histoStore()->createTH1F("MET_reb_TST",200,0.,1000.,";#it{E}_{T}^{misss,rebTST} [GeV]");
+  */
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode ETmissHandlerExample::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+
+  HgammaAnalysis::execute();
+
+  //xAOD::PhotonContainer photons = photonHandler()->getCorrectedContainer();
+  //if (photons.size() < 2) return EL::StatusCode::SUCCESS;
+  //TLorentzVector h = photons[0]->p4() + photons[1]->p4();
+  //histoStore()->fillTH1F("m_yy", h.M()/HG::GeV);
+
+  // Only use good events
+  eventHandler()->pass();
+
+  m_eventCounter++;  
+
+  //////////////////////////////
+  // Using ETmissHandler
+  //////////////////////////////
+
+  // Retreive all objects
+  xAOD::PhotonContainer photons_all = photonHandler()->getCorrectedContainer();
+  xAOD::JetContainer jets_all = jetHandler()->getCorrectedContainer();
+  xAOD::MuonContainer muons_all = muonHandler()->getCorrectedContainer();
+  xAOD::ElectronContainer electrons_all = electronHandler()->getCorrectedContainer();
+
+  // Select sub-sets of objects passing selection
+  xAOD::PhotonContainer photons= photonHandler()->applySelection(photons_all);
+  xAOD::JetContainer jets= jetHandler()->applySelection(jets_all);
+  xAOD::MuonContainer muons= muonHandler()->applySelection(muons_all);
+  xAOD::ElectronContainer elecs= electronHandler()->applySelection(electrons_all);
+
+  // Use the overlap removal handler to remove overlaps
+  overlapHandler()->removeOverlap(photons, jets, elecs, muons);
+
+  // Retrieve Truth ETmiss
+  xAOD::MissingETContainer met_truth = truthHandler()->getMissingET();
+  
+  //const xAOD::MissingET* met_truth_NonInt = (met_truth)["NonInt"];  // NonInt: Neutrinos (non-interacting particles)
+  const xAOD::MissingET* met_truth_NonInt = (met_truth)["Int"];       // Int:    Collision (interacting particles)
+  if (!met_truth_NonInt) {
+    //Error("execute()", "Couldn't find MET_Truth NonInt. Exiting." );// NonInt
+    Error("execute()", "Couldn't find MET_Truth Int. Exiting." );     // Int
+    return EL::StatusCode::SUCCESS;
+  }
+
+  // Retrieve MissingET container, computed by the METMaker tool
+  xAOD::MissingETContainer met_reb= etmissHandler()->getCorrectedContainer(&photons,&jets_all,&elecs,&muons);
+  
+  // MissingET object (TST)
+  const xAOD::MissingET* met_rebuilder_TST = (met_reb)["TST"];
+  if (!met_rebuilder_TST) {
+    Error("execute()", "Failed to retrieve ETmiss TST. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  // MissingET object (CST)
+  const xAOD::MissingET* met_rebuilder_CST = (met_reb)["CST"];
+  if (!met_rebuilder_CST) {
+    Error("execute()", "Failed to retrieve ETmiss CST. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+
+  const xAOD::MissingET* met_rebuilder_RefGamma = (met_reb)["RefGamma"];
+  if (!met_rebuilder_RefGamma) {
+    Error("execute()", "Failed to retrieve ETmiss RefGamma. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+
+
+  const xAOD::MissingET* met_rebuilder_RefEle = (met_reb)["RefEle"];
+  if (!met_rebuilder_RefEle) {
+    Error("execute()", "Failed to retrieve ETmiss RefEle. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+
+
+  const xAOD::MissingET* met_rebuilder_RefMuon = (met_reb)["Muons"];
+  if (!met_rebuilder_RefMuon) {
+    Error("execute()", "Failed to retrieve ETmiss RefMuon_CST. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+
+
+  const xAOD::MissingET* met_rebuilder_RefJet_TST  = (met_reb)["RefJet"];
+  if (!met_rebuilder_RefJet_TST ) {
+    Error("execute()", "Failed to retrieve ETmiss RefJet_TST . Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+
+
+  const xAOD::MissingET* met_rebuilder_SoftClus = (met_reb)["SoftClus"];
+  if (!met_rebuilder_SoftClus) {
+    Error("execute()", "Failed to retrieve ETmiss SoftClus. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+
+  const xAOD::MissingET* met_rebuilder_PVSoftTrk = (met_reb)["PVSoftTrk"];
+  if (!met_rebuilder_PVSoftTrk) {
+    Error("execute()", "Failed to retrieve ETmiss PVSoftTrk. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+
+
+  //////////////////////////////
+
+
+  if (photons.size() <2)return EL::StatusCode::SUCCESS;
+    
+  TLorentzVector y1 = photons[0]->p4(), y2 = photons[1]->p4();  // Selecting the 2 leading photons
+  y1 *=HG::invGeV;
+  y2 *=HG::invGeV;
+  TLorentzVector yy =y1+y2;
+  if ( yy.M() < 105. || yy.M() > 160. ) return EL::StatusCode::SUCCESS; // di-photon mass must be insice the mass window
+
+  //if ( jets.size() < 1 ) return EL::StatusCode::SUCCESS;
+
+  //if ( met_truth_NonInt->met()*0.001 < 10. ) return EL::StatusCode::SUCCESS;
+
+
+  if( m_eventCounter < 21 ) {
+    if ( m_eventCounter==1 ) Info("execute()", " ");
+    Info("execute()", "  Event number = %i", m_eventCounter );
+    // ETmissHandler => METMaker output
+    Info("execute()", "  ####################################################  " );
+    Info("execute()", "  ### ETmissHandler: METMaker output  " );
+    Info("execute()", "  ####################################################  " );
+    Info("execute()", "  ETmissRebuilder CST HGamAnalysis  = %.2f GeV", met_rebuilder_CST->met()*0.001);
+    Info("execute()", "    CST HGamAnalysis mpx = %.2f GeV", met_rebuilder_CST->mpx()*0.001);
+    Info("execute()", "    CST HGamAnalysis mpy = %.2f GeV", met_rebuilder_CST->mpy()*0.001);
+    Info("execute()", "  ETmissRebuilder TST HGamAnalysis  = %.2f GeV", met_rebuilder_TST->met()*0.001);
+    Info("execute()", "    TST HGamAnalysis mpx = %.2f GeV", met_rebuilder_TST->mpx()*0.001);
+    Info("execute()", "    TST HGamAnalysis mpy = %.2f GeV", met_rebuilder_TST->mpy()*0.001);
+    Info("execute()", "  MET Truth (NonInt) HGammaAnalysis = %.2f GeV", (met_truth_NonInt->met()*0.001));
+    Info("execute()", "  MET reb RefGamma HGamAnaly CST  = %.2f GeV", (met_rebuilder_RefGamma->met()*0.001));
+    Info("execute()", "  MET reb RefEle HGamAnaly CST    = %.2f GeV", (met_rebuilder_RefEle->met()*0.001));
+    Info("execute()", "  MET reb RefMuon HGamAnaly CST   = %.2f GeV", (met_rebuilder_RefMuon->met()*0.001));
+    Info("execute()", "  MET reb SoftClus HGamAnaly CST  = %.2f GeV", (met_rebuilder_SoftClus->met()*0.001));
+    Info("execute()", "  MET reb PVSoftTrk HGamAnaly CST = %.2f GeV", (met_rebuilder_PVSoftTrk->met()*0.001));
+    Info("execute()", "  ####################################################  " );
+    Info("execute()", "  MET reb RefJet HGamAnaly TST    = %.2f GeV", (met_rebuilder_RefJet_TST->met()*0.001));
+    Info("execute()", " ");
+  }
+  
+  
+  return EL::StatusCode::SUCCESS;
+}

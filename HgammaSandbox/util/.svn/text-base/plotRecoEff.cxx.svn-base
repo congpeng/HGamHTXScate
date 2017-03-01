@@ -1,0 +1,82 @@
+#include "HgammaSandbox/PlotUtils.h"
+
+using namespace HG;
+
+void drawEffVsPtLabels(TString etaReg) {
+  if (etaReg=="") drawText(0.2,0.90,"No photon #eta requirment");
+  else if (etaReg.Contains("ctrl")) drawText(0.2,0.90,"Photon |#eta|<1.37 (truth #eta)");
+  else if (etaReg.Contains("fwd"))  drawText(0.2,0.90,"Photon 1.52<|#eta|<2.37 (truth #eta)");
+  drawText(0.7,0.50,"Photon clusters",kBlue);
+  drawText(0.7,0.45,"Loose ID photons",kGreen+1);
+  drawText(0.7,0.40,"Tight ID photons",kRed);
+}
+
+int main(int argc, char **argv) {
+  // input file name
+  TString inFN("output/hist-sample.root"), pdf("reco_eff_plots.pdf");
+  for (int i=1;i<argc;++i) {
+    TString arg(argv[i]);
+    if (arg=="--inputFile") inFN=argv[++i];
+    if (arg=="--pdfFile") pdf=argv[++i];
+  }
+    
+  printf("\n  Running plotRecoEff\n");
+  printf("  input file: %s\n",inFN.Data());
+  TFile *f = openFile(inFN);
+
+  // Create output pdf
+  // Set style
+  TCanvas *can = new TCanvas();
+  can->SetTopMargin(0.04); can->SetRightMargin(0.04);
+  can->Print(pdf+"[");
+  
+  
+  // Page 1. Draw the multiplicity of reconstructed photons
+  TH1 *h = drawHisto(f,"Ntight_photons","",kRed);
+  h->SetXTitle("Number of reconstructed photons");
+  h->Draw(); h->Draw("hist same");
+  drawHisto(f,"Nloose_photons","same",kGreen+1);
+  drawHisto(f,"Nreco_photons","same",kBlue);
+
+  drawText(0.7,0.90,"Photon clusters",kBlue);
+  drawText(0.7,0.85,"Loose photons",kGreen+1);
+  drawText(0.7,0.80,"Tight photons",kRed);
+  can->Print(pdf);
+
+  // Page 2. Draw the multiplicity of true and tight photons
+  TH1 *ht = drawHisto(f,"Ntruth_photons","",kBlue);
+  ht->SetXTitle("Photon multiplicity"); ht->Draw("hist same");
+  h->Draw("same"); h->Draw("hist same");
+  drawText(0.6,0.90,"Truth photons #scale[0.8]{(not from hadrons)}",kBlue);
+  drawText(0.6,0.85,"Tight reco photons",kRed);
+  can->Print(pdf);
+  
+  // Pages 3-4: pT and eta of truth photons
+  drawHisto(f,"pT_truth_photon","",kBlue);
+  can->Print(pdf);
+  drawHisto(f,"eta_truth_photon","",kBlue);
+  can->Print(pdf);
+
+  for ( TString etaReg : {"","_ctrl","_fwd"} ) {
+    TH1 *eff = drawHisto(f,"eff_anyPhoton_vs_pT"+etaReg,"",kBlue);
+    eff->SetTitle(";photon #it{p}_{T} [GeV];Reconstruction efficiency");
+    eff->GetYaxis()->SetRangeUser(0,1.2); eff->Draw();
+    drawHisto(f,"eff_loosePhoton_vs_pT"+etaReg,"same",kGreen+1);
+    drawHisto(f,"eff_tightPhoton_vs_pT"+etaReg,"same",kRed);
+    drawEffVsPtLabels(etaReg);
+    can->Print(pdf);
+    
+    TH1 *t_pT = drawHisto(f,"pT_truth_photon"+etaReg,"",kBlue);
+    eff->Draw("axis");
+    drawBayesianEff(getHisto(f,"pT_truth_photon_anyMatching"+etaReg),t_pT,kBlue);
+    drawBayesianEff(getHisto(f,"pT_truth_photon_looseMatching"+etaReg),t_pT,kGreen+1,22);
+    drawBayesianEff(getHisto(f,"pT_truth_photon_tightMatching"+etaReg),t_pT,kRed,23);
+    drawEffVsPtLabels(etaReg);
+    drawText(0.7,0.20,"Bayesian errors");
+    can->Print(pdf);
+  }
+  
+  can->Print(pdf+"]");
+  printf("  Produced: %s\n\n",pdf.Data());
+  f->Close();
+}

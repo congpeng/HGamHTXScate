@@ -1,0 +1,519 @@
+#include "HgammaSandbox/DiphotonVertexStudies.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "HGamAnalysisFramework/TruthUtils.h"
+
+#include "PhotonVertexSelection/PhotonVertexSelectionTool.h"
+#include "PhotonVertexSelection/PhotonVertexHelpers.h"
+#include "PhotonVertexSelection/PhotonPointingTool.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(DiphotonVertexStudies)
+
+
+
+DiphotonVertexStudies::DiphotonVertexStudies(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+
+
+DiphotonVertexStudies::~DiphotonVertexStudies()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+EL::StatusCode DiphotonVertexStudies::createOutput()
+{
+  
+  CP::PhotonPointingTool *mypointTool = new CP::PhotonPointingTool("PointingTool");
+  if (mypointTool->initialize().isFailure())
+    HG::fatal("Failed vertex init");
+
+  ToolHandle<CP::IPhotonPointingTool> mytpoint(mypointTool);
+
+  m_photonVtxSel = new CP::PhotonVertexSelectionTool("PhotonVertexSelectionTool");
+  CP_CHECK("DiphotonVertexStudiesReco", m_photonVtxSel->setProperty("PhotonPointingTool", mytpoint));
+  
+  if (m_photonVtxSel->initialize().isFailure())
+    HG::fatal("Failed to initialize PhotonVertexSelectionTool");
+
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+  TString evts = ";Events / Bin";
+  TString effs = ";Efficiency / Bin"; 
+
+  histoStore()->createTH1F("h_nTruePhotons",  5, -0.5,  4.5,  ";N_{true #gamma}"+evts);
+  //histoStore()->createTH1F("h_nRecoPhotons",  8, -0.5,  7.5, ";N_{reco. #gamma}"+evts);
+  histoStore()->createTH1F(  "h_averageIPC", 40, -0.5, 39.5,           ";#LT#mu#GT"+evts);
+  
+  histoStore()->createTH1F(    "h_true_vtx_r",  20,    0,   1,   ";r_{PV}^{truth} [mm]"+evts);
+  histoStore()->createTH1F(    "h_true_vtx_z", 400, -200, 200,   ";z_{PV}^{truth} [mm]"+evts);
+  histoStore()->createTH1F("h_true_vtx_abs_z", 200,    0, 200, ";|z_{PV}^{truth}| [mm]"+evts);
+
+  histoStore()->createTH1F(    "h_reco_vtx_r",  20,    0,   1,   ";r_{PV0}^{reco} [mm]"+evts);
+  histoStore()->createTH1F(    "h_reco_vtx_z", 400, -200, 200,   ";z_{PV0}^{reco} [mm]"+evts);
+  histoStore()->createTH1F("h_reco_vtx_abs_z", 200,    0, 200, ";|z_{PV0}^{reco}| [mm]"+evts);
+  
+  histoStore()->createTH1F(    "h_tool_vtx_r",  20,    0,   1,   ";r_{PV}^{tool} [mm]"+evts);
+  histoStore()->createTH1F(    "h_tool_vtx_z", 400, -200, 200,   ";z_{PV}^{tool} [mm]"+evts);
+  histoStore()->createTH1F("h_tool_vtx_abs_z", 200,    0, 200, ";|z_{PV}^{tool}| [mm]"+evts);
+  
+  histoStore()->createTH1F(    "h_my_vtx_r",  20,    0,   1,   ";r_{PV}^{hybrid} [mm]"+evts);
+  histoStore()->createTH1F(    "h_my_vtx_z", 400, -200, 200,   ";z_{PV}^{hybrid} [mm]"+evts);
+  histoStore()->createTH1F("h_my_vtx_abs_z", 200,    0, 200, ";|z_{PV}^{hybrid}| [mm]"+evts);
+  
+  histoStore()->createTH2F("h2_true_x_y", 100, -0.35, -0.25, 100, 0.65, 0.75, ";x_{PV}^{truth} [mm]; y_{PV}^{truth} [mm]"+evts);
+  histoStore()->createTH2F("h2_reco_x_y", 100, -0.35, -0.25, 100, 0.65, 0.75, ";x_{PV0}^{reco} [mm]; y_{PV0}^{reco} [mm]"+evts);
+  histoStore()->createTH2F("h2_tool_x_y", 100, -0.35, -0.25, 100, 0.65, 0.75, ";x_{PV}^{tool} [mm]; y_{PV}^{tool} [mm]"+evts);
+  histoStore()->createTH2F("h2_my_x_y", 100, -0.35, -0.25, 100, 0.65, 0.75, ";x_{PV}^{hybrid} [mm]; y_{PV}^{hybrid} [mm]"+evts);
+  
+  histoStore()->createTH2F("h2_true_x_z", 100, -0.35, -0.25, 500, -10., 10.0, ";x_{PV}^{truth} [mm]; z_{PV}^{truth} [mm]"+evts);
+  histoStore()->createTH2F("h2_reco_x_z", 100, -0.35, -0.25, 500, -10., 10.0, ";x_{PV0}^{reco} [mm]; z_{PV0}^{reco} [mm]"+evts);
+  histoStore()->createTH2F("h2_tool_x_z", 100, -0.35, -0.25, 500, -10., 10.0, ";x_{PV}^{tool} [mm]; z_{PV}^{tool} [mm]"+evts);
+  histoStore()->createTH2F("h2_my_x_z", 100, -0.35, -0.25, 500, -10., 10.0, ";x_{PV}^{hybrid} [mm]; z_{PV}^{hybrid} [mm]"+evts);
+  
+  histoStore()->createTH1F(    "h_diff_vtx_z", 100, -0.5, 0.5,   ";z_{PV}^{truth} - z_{PV0}^{reco} [mm]"+evts);
+  histoStore()->createTH1F(    "h_nndiff_vtx_z", 100, -0.5, 0.5,   ";z_{PV}^{truth} - z_{PV}^{tool} [mm]"+evts);
+  histoStore()->createTH1F(    "h_mydiff_vtx_z", 100, -0.5, 0.5,   ";z_{PV}^{truth} - z_{PV}^{hybrid} [mm]"+evts);
+
+
+  //new histograms
+  histoStore()->createTH1F(        "h_reso_vtx",  100,  0, 0.1, "; min( |z_{PV}^{truth} - z_{PV}^{reco}| ) [mm]"+evts);
+  histoStore()->createTH1F(    "h_min_dist_vtx",   50,  0,  50, "; min( |z_{PV}^{i} - z_{PV}^{j}| ) [mm]"+evts);
+  //histoStore()->createTH1F(     "h_min_next_NN",  100,  0,   2, "; min( |z_{PV}^{tool} - z_{PV}^{i}| ) [mm]"+evts);
+  //histoStore()->createTH1F(    "h_min_next_PV0",  100,  0,   2, "; min( |z_{PV0}^{reco} - z_{PV}^{i}| ) [mm]"+evts);
+  
+  histoStore()->createTH1F(  "h_dist_truth_PV0",   50,  0,  50, "; |z_{PV}^{truth} - z_{PV0}^{reco}| [mm]"+evts);
+  histoStore()->createTH1F(   "h_dist_truth_NN",   50,  0,  50, "; |z_{PV}^{truth} - z_{PV}^{tool}| [mm]"+evts);
+  histoStore()->createTH1F(     "h_dist_NN_PV0",   50,  0,  50, "; |z_{PV}^{tool} - z_{PV0}^{reco}| [mm]"+evts);
+
+  histoStore()->createTH1F(       "h_PVi_truth",  30,  -0.5, 29.5, "; PV_{i}^{truth}"+evts);
+  histoStore()->createTH1F(          "h_PVi_NN",  30,  -0.5, 29.5, "; PV_{i}^{tool}"+evts);
+  histoStore()->createTH1F(       "h_PVi_Delta",  15,  -7.5,  7.5, "; i-j from PV_{i}^{truth} - PV_{j}^{tool}"+evts);
+  histoStore()->createTH1F(      "h_nCloser_NN",  30,  -0.5, 29.5, "; N_{PV} Closer than NN"+evts);
+  histoStore()->createTH1F(     "h_nCloser_PV0",  30,  -0.5, 29.5, "; N_{PV} Closer than PV0"+evts);
+  //histoStore()->createTH1F(         "h_PVi_PV0",  30, -0.5, 29.5, "; PV_{i}^{"+evts); //use if PV0 not always PriVtx
+
+  for ( TString jbin: { "", "_0jex", "_1jex", "_2jex", "_1jin", "_2jin", "_3jin" } ) { 
+    // nPV plots in different bins of <mu>
+    for ( TString bin: {"", "_0bin", "_1bin", "_2bin", "_3bin", "_4bin", "_5bin", "_6bin", "_7bin"} ) {
+      histoStore()->createTH1F("h_nPrimaryVtxs"+bin+jbin, 40, -0.5, 39.5,           ";N_{PV}"+evts);
+    }
+      
+    // plots of profiled variables
+    histoStore()->createTH1F(    "h_nPV"+jbin,    8,  0,    40, "; N_{PV}"+evts);
+    histoStore()->createTH1F(     "h_mu"+jbin,    8,  0,    40, "; #LT#mu#GT"+evts);
+    histoStore()->createTH1F(   "h_yypt"+jbin,   40,  0,   200, "; Truth p^{yy}_{T} [GeV]"+evts);
+    histoStore()->createTH1F(   "h_phpt"+jbin,   40,  0,   200, "; Truth Photon p^{lead}_{T} [GeV]"+evts);
+    histoStore()->createTH1F(   "h_njet"+jbin,    7, -0.5, 6.5, "; Truth Jet Mutliplicity"+evts);
+    histoStore()->createTH1F(   "h_nobj"+jbin,    7, -0.5, 6.5, "; Truth Object Mutliplicity"+evts);
+    histoStore()->createTH1F(   "h_nlep"+jbin,    3, -0.5, 2.5, "; Truth Lepton Mutliplicity"+evts); 
+    histoStore()->createTH1F(  "h_sumpt"+jbin,  100, 0,   400, ";  Sum of p_{T} [GeV]"+evts);
+    histoStore()->createTH1F( "h_sumpt2"+jbin,  100, 0, 4000, ";  Sum of p_{T}^{2} [GeV]"+evts);
+    //histoStore()->createTH1F( "h_sumpt2"+jbin,  100, 0, 10000, ";  Sum of p_{T}^{2} [GeV]"+evts);
+
+    // eff plots for different absolute z cuts 
+    for ( TString cut: { "_300um", "_500um", "_1mm", "_2mm", "_3mm", "_5mm", "_10mm" } ) {
+      for ( TString effType: { "h_eff", "h_nneff", "h_myeff" } ) {
+        histoStore()->createTProfile(  effType+"_cut"+cut+jbin, 1,  0,   1, "; Arbitrary Unit"+effs);
+        histoStore()->createTProfile(  effType+"_nPV"+cut+jbin, 8,  0,  40, "; N_{PV}"+effs);
+        histoStore()->createTProfile(   effType+"_mu"+cut+jbin, 8,  0,  40, "; #LT#mu#GT"+effs);
+        histoStore()->createTProfile( effType+"_yypt"+cut+jbin,40,  0,   200, "; Truth p^{yy}_{T} [GeV]"+effs);
+        histoStore()->createTProfile( effType+"_phpt"+cut+jbin,40,  0,   200, "; Truth Photon p^{lead}_{T} [GeV]"+effs);
+        histoStore()->createTProfile( effType+"_njet"+cut+jbin, 7, -0.5, 6.5, "; Truth Jet Mutliplicity"+effs);
+        histoStore()->createTProfile( effType+"_nobj"+cut+jbin, 7, -0.5, 6.5, "; Truth Object Mutliplicity"+effs);
+        histoStore()->createTProfile( effType+"_nlep"+cut+jbin, 3, -0.5, 2.5, "; Truth Lepton Mutliplicity"+effs);
+        histoStore()->createTProfile( effType+"_sumpt"+cut+jbin,  100, 0,   400, "; Sum of p_{T} [GeV]"+effs);
+        histoStore()->createTProfile( effType+"_sumpt2"+cut+jbin, 100, 0,  4000, "; Sum of p_{T}^{2} [GeV^{2}]"+effs);
+        //histoStore()->createTProfile( effType+"_sumpt2"+cut+jbin, 100, 0,  10000, "; Sum of p_{T}^{2} [GeV^{2}]"+effs);
+      }
+
+      histoStore()->createTH1F( "h_pt20_passPV0"+cut+jbin, 100, 0.0, 5.0, "; ptcone20 [GeV]"+evts);
+      histoStore()->createTH1F( "h_pt20_failPV0"+cut+jbin, 100, 0.0, 5.0, "; ptcone20 [GeV]"+evts); 
+      
+      histoStore()->createTH1F( "h_tp20_passPV0"+cut+jbin, 100, 0.0, 5.0, "; topoetcone20 [GeV]"+evts);
+      histoStore()->createTH1F( "h_tp20_failPV0"+cut+jbin, 100, 0.0, 5.0, "; topoetcone20 [GeV]"+evts); 
+      
+      histoStore()->createTH1F("h_ptv20_passPV0"+cut+jbin, 100, 0.0, 5.0, "; ptvarcone20 [GeV]"+evts);
+      histoStore()->createTH1F("h_ptv20_failPV0"+cut+jbin, 100, 0.0, 5.0, "; ptvarcone20 [GeV]"+evts);
+    }
+  }
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode DiphotonVertexStudies::execute()
+{
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+  // ---------------------------
+  // Find the truth particles
+  // ---------------------------
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticles" ).isFailure() )
+    HG::fatal("Cannot access TruthParticles");
+
+  // Reject Dalitz
+  if ( HG::isDalitz(truthPtcls) ) return EL::StatusCode::SUCCESS;
+
+  // Get Truth Photons
+  std::vector<const xAOD::TruthParticle*> truePhotons;
+  for ( const xAOD::TruthParticle *ptcl : *truthPtcls ) {
+    //if (ptcl->parent(0)->pdgId() != 25) continue; 
+    if ( !HG::isGoodTruthPhoton(ptcl) ) continue;
+    if ( !HG::isFromHiggs(ptcl) ) continue;
+    //if ( ptcl->pt() > 25.e3 ) continue;
+    //std::cout << ptcl->pt()*0.001 << std::endl;
+    
+    // Fill vector truePhotons with pt sorted photons to access leading and subleading photons
+    unsigned int i = 0; 
+    while( i<truePhotons.size() && ptcl->pt() < truePhotons[i]->pt()) 
+      i++; 
+    truePhotons.insert(  truePhotons.begin() + i, ptcl);
+  }
+  
+  
+  const xAOD::JetContainer *truthJets = 0;
+  if (event()->retrieve(truthJets,"AntiKt4TruthJets").isFailure() )
+    HG::fatal("Cannot access AntiKt4TruthJets");
+  
+
+  HG::TruthParticleStruct truth = HG::identifyTruthParticles(truthPtcls,truthJets,30.0*HG::GeV);
+  int nTruePhotons = truePhotons.size();
+  if (nTruePhotons != 2 ) return EL::StatusCode::SUCCESS;
+  double leadpt = truePhotons[0]->pt()/HG::GeV;
+  double yypt = (truePhotons[0]->p4() + truePhotons[1]->p4()).Pt()/HG::GeV;
+  
+  int nTrueJets = truth.jets.size();
+  int nTrueElectrons = truth.electrons.size();
+  int nTrueMuons = truth.muons.size();
+  int nTrueLeptons = (nTrueElectrons + nTrueMuons);
+  int nTrueObjects = (nTrueLeptons + nTrueJets);
+
+  
+  // ---------------------------------------
+  // Collect the leading 2 reco photons
+  // ---------------------------------------
+  xAOD::PhotonContainer photons = photonHandler()->getCorrectedContainer();
+  xAOD::PhotonContainer ph_presel(SG::VIEW_ELEMENTS);
+  int nPhotons = 0;
+  for( xAOD::Photon *photon : photons ) {
+    if (!photonHandler()->passPtEtaCuts(photon)) continue;
+    if (!photonHandler()->passPIDCut(photon, egammaPID::IsEMLoose)) continue;
+    ph_presel.push_back(photon);
+    if (++nPhotons == 2) break; //only want leading 2 photons
+  }
+  
+  int nRecoPhotons = ph_presel.size();
+  if (nRecoPhotons != 2 ) return EL::StatusCode::SUCCESS;
+  
+  // ---------------------------------------
+  // Collect the primary vertices 
+  // ---------------------------------------
+  const xAOD::VertexContainer *primaryVtxs =0;
+  if ( event()->retrieve(primaryVtxs,"PrimaryVertices").isFailure() ) {
+    HG::fatal("Cannot access PrimaryVertices");
+  }
+  
+  // ---------------------------------------
+  // Collect the NN vertices 
+  // ---------------------------------------
+  // Using pre-selected photons, get ML primary vertex from MVA
+  const xAOD::Vertex *NNvertex = NULL;
+  m_photonVtxSel->getVertex( ph_presel, NNvertex );
+  if (NNvertex == nullptr) NNvertex = xAOD::PVHelpers::getHardestVertex(primaryVtxs); 
+  /*if (m_photonVtxSel->getVertex( ph_presel, NNvertex ).isFailure()) {
+    // no vertex was found, use primary for now and report to me
+    NNvertex = primaryVtxs->at(0);
+    //HG::fatal("Failed to find NN PrimaryVertex.");
+  }*/
+  
+  //double sumPt  = xAOD::PVHelpers::getVertexSumPt( NNvertex, 1); // /HG::GeV;
+  //double sumPt2 = xAOD::PVHelpers::getVertexSumPt( NNvertex, 2); // /(HG::GeV*HG::GeV);
+  //if (sumPt < 25) std::cout << sumPt << "   " << sumPt2 << std::endl;
+
+  // ------------------------------------------------
+  // Make the vertex position and resolution plots
+  // ------------------------------------------------
+ 
+  //int nTruePhotons = truePhotons.size();
+  //int nRecoPhotons = recoPhotons.size();
+  int nPrimaryVtxs = primaryVtxs->size();
+  double averageIPC = eventInfo()->averageInteractionsPerCrossing();
+  
+  //For starters let's just consider the leading photon in diphoton events. 
+  //if (nTruePhotons != 2 ) return EL::StatusCode::SUCCESS;
+  //if (nPrimaryVtxs  < 1 ) return EL::StatusCode::SUCCESS; // just incase.
+  
+  histoStore()->fillTH1F("h_nTruePhotons", nTruePhotons);
+  histoStore()->fillTH1F("h_nPrimaryVtxs", nPrimaryVtxs);
+  histoStore()->fillTH1F(  "h_averageIPC",   averageIPC);
+
+
+  const xAOD::TruthParticle *t_gam = truePhotons[0];
+  //const xAOD::Photon        *r_gam = recoPhotons[0];
+  const xAOD::Vertex        *pvx   = xAOD::PVHelpers::getHardestVertex(primaryVtxs); //primaryVtxs->at(0);
+   
+  //Position Variables
+  double tx = t_gam->prodVtx()->x(); //truth position 
+  double ty = t_gam->prodVtx()->y();
+  double tz = t_gam->prodVtx()->z();
+  double tr = sqrt( tx*tx + ty*ty );
+
+  
+  histoStore()->fillTH1F("h_true_vtx_r", tr); 
+  histoStore()->fillTH1F("h_true_vtx_z", tz); 
+  histoStore()->fillTH1F("h_true_vtx_abs_z", fabs(tz));
+  histoStore()->fillTH2F("h2_true_x_y", tx, ty);
+  histoStore()->fillTH2F("h2_true_x_z", tx, tz);
+ 
+  // x and y postion for PV not stored in derivations making r plot extra pointless..
+  //int nTracksAtVertex = pvx->nTrackParticles(); 
+  double x = pvx->x();
+  double y = pvx->y();
+  double z = pvx->z();
+  double r = sqrt( x*x + y*y );
+  
+  histoStore()->fillTH1F("h_reco_vtx_r", r); 
+  histoStore()->fillTH1F("h_reco_vtx_z", z); 
+  histoStore()->fillTH1F("h_reco_vtx_abs_z", fabs(z)); 
+  histoStore()->fillTH2F("h2_reco_x_y", x, y);
+  histoStore()->fillTH2F("h2_reco_x_z", x, z);
+  
+  double dz = (tz-z);
+  double absdz = fabs(tz-z);
+  histoStore()->fillTH1F("h_diff_vtx_z", dz);
+  
+  // NN vertex positions
+  double nnx = NNvertex->x();
+  double nny = NNvertex->y();
+  double nnz = NNvertex->z();
+  double nnr = sqrt( nnx*nnx + nny*nny );
+  
+  histoStore()->fillTH1F("h_tool_vtx_r", nnr); 
+  histoStore()->fillTH1F("h_tool_vtx_z", nnz); 
+  histoStore()->fillTH1F("h_tool_vtx_abs_z", fabs(nnz)); 
+  histoStore()->fillTH2F("h2_tool_x_y", nnx, nny);
+  histoStore()->fillTH2F("h2_tool_x_z", nnx, nnz);
+
+  double nndz = (tz-nnz);
+  double nnabsdz = fabs(tz-nnz);
+  histoStore()->fillTH1F("h_nndiff_vtx_z", nndz);
+  double distnn_PV0 = fabs(nnz - z);
+  
+  // Determin if use hybrid
+  bool useHybrid(false);
+  for( xAOD::Vertex *vtx : *primaryVtxs ) {
+    if (xAOD::PVHelpers::getVertexSumPt( vtx, 1) > 55) {
+      useHybrid = true;
+      break;
+    }
+  } 
+
+  // Hybrid Vertex Selection
+  double myx(nnx), myy(nny), myz(nnz), myr(nnr);
+  double mydz(nndz), myabsdz(nnabsdz);
+  //if ( (leadpt > 100) || (yypt > 100) ) {
+  if (useHybrid) { 
+    myx = x;  myy = y;  myz = z;  myr = r;
+    mydz = dz;  myabsdz = absdz;
+  }
+  histoStore()->fillTH1F("h_my_vtx_r", myr); 
+  histoStore()->fillTH1F("h_my_vtx_z", myz); 
+  histoStore()->fillTH1F("h_my_vtx_abs_z", fabs(myz)); 
+  histoStore()->fillTH2F("h2_my_x_y", myx, myy);
+  histoStore()->fillTH2F("h2_my_x_z", myx, myz);
+  histoStore()->fillTH1F("h_mydiff_vtx_z", mydz); 
+
+  // Get some quantities about the vertices
+  
+  //Find the vertex resolution, index of reco closest to truth, list of all distances from truth, list of all z positions 
+  int i_tvtx(-999), count(0);
+  double mindiff(999), diff(999);
+  std::vector<double> distvtx, zvtx; 
+  for( xAOD::Vertex *vtx : *primaryVtxs ) {
+    diff = fabs(tz - vtx->z());
+    if ( diff < mindiff ) {
+      mindiff = diff;
+      i_tvtx = count;
+    }
+    distvtx.push_back(diff);
+    zvtx.push_back( vtx->z() );
+    count++;
+  }
+  
+
+  const xAOD::Vertex *nearTruthVtx = primaryVtxs->at(i_tvtx);
+  double sumPt  = xAOD::PVHelpers::getVertexSumPt( nearTruthVtx, 1); 
+  double sumPt2 = xAOD::PVHelpers::getVertexSumPt( nearTruthVtx, 2); 
+  //if (sumPt < 25) std::cout << sumPt << "   " << sumPt2 << std::endl;
+  //std::cout << mindiff << std::endl;
+
+
+  int  nCloserNN = 0; // how many vertices are closer to truth than the NN vertex
+  int nCloserPV0 = 0; // how many vertices are closer to truth than the PV0 vertex
+  double min_anyvtx(999);
+  std::reverse(zvtx.begin(), zvtx.end());
+  std::reverse(distvtx.begin(), distvtx.end());
+  for( int i(0); i < distvtx.size(); i++ ) {
+    if (distvtx[i] < nnabsdz) nCloserNN++;
+    if (distvtx[i] <   absdz) nCloserPV0++;
+    if ( i < distvtx.size()-1 ) {
+      double dist_anyvtx = fabs(zvtx[i]-zvtx[i+1]);
+      if (dist_anyvtx < min_anyvtx) min_anyvtx = dist_anyvtx;
+    }
+  }
+
+  // plot vertex compariosn quantities
+  histoStore()->fillTH1F(       "h_reso_vtx",    mindiff ); // how close is a reco vtx to truth
+  histoStore()->fillTH1F(   "h_min_dist_vtx", min_anyvtx ); // what is the min distance between any two vertices?
+  //histoStore()->fillTH1F(  "h_min_next_NN", ); // distance to closest vertex from NN
+  //histoStore()->fillTH1F( "h_min_next_PV0", ); // distance to closest vertex from PV0
+
+  if ( mindiff != absdz   ) histoStore()->fillTH1F( "h_dist_truth_PV0",      absdz ); // distance of PV0 vtx to truth, if not match 
+  if ( mindiff != nnabsdz ) histoStore()->fillTH1F(  "h_dist_truth_NN",    nnabsdz ); // distance of NN vtx to truth, if not match
+  if ( distnn_PV0 != 0 ) {
+    histoStore()->fillTH1F(    "h_dist_NN_PV0", distnn_PV0 ); // distance from NN vtx to PV0 when the two are different.
+  }
+  
+  int i_nnvtx = NNvertex->index();
+  int iDelta = (i_tvtx - i_nnvtx );
+  histoStore()->fillTH1F( "h_PVi_Delta",  iDelta  );
+  histoStore()->fillTH1F( "h_PVi_truth",  i_tvtx  );
+  histoStore()->fillTH1F(    "h_PVi_NN",  i_nnvtx );
+ 
+  if (nCloserPV0 > 0) histoStore()->fillTH1F( "h_nCloser_PV0", nCloserPV0 ); // if PV0 is wrong, how many vertices are closer to truth
+  if (nCloserNN  > 0) histoStore()->fillTH1F(  "h_nCloser_NN", nCloserNN  ); // if NN is wrong,  how many vertices are closer to truth
+
+  //if ( sumPt < 25 )
+  //  printf("sumPt = %6.4f   sumPt2 = %6.4f   leadPt = %6.4f   yyPt = %6.4f   nJets = %2d   NPV = %2d   Pass = %1d \n",
+  //      sumPt, sumPt2, leadpt, yypt, nTrueJets, nPrimaryVtxs, (absdz < 0.3) ); 
+
+  // plot everything else
+  int nZcuts = 7;
+  double Zcuts[7] = { 0.3, 0.5, 1, 2, 3, 5, 10 };
+  TString ZcutNames[7] = { "_300um", "_500um", "_1mm", "_2mm", "_3mm", "_5mm", "_10mm" };
+
+  int nJetCuts = 7;
+  bool b_0jex = ( nTrueJets == 0 );
+  bool b_1jex = ( nTrueJets == 1 );
+  bool b_2jex = ( nTrueJets == 2 );
+  bool b_1jin = ( nTrueJets >= 1 );
+  bool b_2jin = ( nTrueJets >= 2 );
+  bool b_3jin = ( nTrueJets >= 3 );
+  bool jCutPass[7] = { true, b_0jex, b_1jex, b_2jex, b_1jin, b_2jin, b_3jin };
+  TString jCutNames[7] = { "", "_0jex", "_1jex", "_2jex", "_1jin", "_2jin", "_3jin" }; 
+  
+  for( int jcut(0); jcut < nJetCuts; jcut++ ) {
+    TString jCutName = jCutNames[jcut];
+    if (!jCutPass[jcut]) continue;
+  
+    //plot NPV in different bins of < mu > 
+    if( (averageIPC <  4.5) && (averageIPC >= -0.5) ) histoStore()->fillTH1F( "h_nPrimaryVtxs_0bin"+jCutName, nPrimaryVtxs); 
+    if( (averageIPC <  9.5) && (averageIPC >=  4.5) ) histoStore()->fillTH1F( "h_nPrimaryVtxs_1bin"+jCutName, nPrimaryVtxs); 
+    if( (averageIPC < 14.5) && (averageIPC >=  9.5) ) histoStore()->fillTH1F( "h_nPrimaryVtxs_2bin"+jCutName, nPrimaryVtxs); 
+    if( (averageIPC < 19.5) && (averageIPC >= 14.5) ) histoStore()->fillTH1F( "h_nPrimaryVtxs_3bin"+jCutName, nPrimaryVtxs); 
+    if( (averageIPC < 24.5) && (averageIPC >= 19.5) ) histoStore()->fillTH1F( "h_nPrimaryVtxs_4bin"+jCutName, nPrimaryVtxs); 
+    if( (averageIPC < 29.5) && (averageIPC >= 24.5) ) histoStore()->fillTH1F( "h_nPrimaryVtxs_5bin"+jCutName, nPrimaryVtxs); 
+    if( (averageIPC < 34.5) && (averageIPC >= 29.5) ) histoStore()->fillTH1F( "h_nPrimaryVtxs_6bin"+jCutName, nPrimaryVtxs); 
+    if(                        (averageIPC >= 34.5) ) histoStore()->fillTH1F( "h_nPrimaryVtxs_7bin"+jCutName, nPrimaryVtxs); 
+      
+    // Fill distrobutions
+    histoStore()->fillTH1F(    "h_nPV"+jCutName,  nPrimaryVtxs); 
+    histoStore()->fillTH1F(     "h_mu"+jCutName,    averageIPC);
+    histoStore()->fillTH1F(   "h_yypt"+jCutName,          yypt);
+    histoStore()->fillTH1F(   "h_phpt"+jCutName,        leadpt);
+    histoStore()->fillTH1F(   "h_njet"+jCutName,     nTrueJets);
+    histoStore()->fillTH1F(   "h_nlep"+jCutName,  nTrueLeptons);
+    histoStore()->fillTH1F(   "h_nobj"+jCutName,  nTrueObjects);
+    histoStore()->fillTH1F(  "h_sumpt"+jCutName,         sumPt);
+    histoStore()->fillTH1F( "h_sumpt2"+jCutName,        sumPt2);
+
+    //plot efficiencies for different |z(truth)-z(reco)| requirements.
+    for ( int icut(0); icut < nZcuts; icut++ ) {
+      TString ZcutName = ZcutNames[icut];
+      bool pass = ( absdz < Zcuts[icut] );
+      
+      histoStore()->fillTProfile(    "h_eff_cut"+ZcutName+jCutName,            0, pass);
+      histoStore()->fillTProfile(    "h_eff_nPV"+ZcutName+jCutName, nPrimaryVtxs, pass); 
+      histoStore()->fillTProfile(     "h_eff_mu"+ZcutName+jCutName,   averageIPC, pass);
+      histoStore()->fillTProfile(   "h_eff_yypt"+ZcutName+jCutName,         yypt, pass);
+      histoStore()->fillTProfile(   "h_eff_phpt"+ZcutName+jCutName,       leadpt, pass);
+      histoStore()->fillTProfile(   "h_eff_njet"+ZcutName+jCutName,    nTrueJets, pass);
+      histoStore()->fillTProfile(   "h_eff_nlep"+ZcutName+jCutName, nTrueLeptons, pass);
+      histoStore()->fillTProfile(   "h_eff_nobj"+ZcutName+jCutName, nTrueObjects, pass);
+      histoStore()->fillTProfile(  "h_eff_sumpt"+ZcutName+jCutName,        sumPt, pass);
+      histoStore()->fillTProfile( "h_eff_sumpt2"+ZcutName+jCutName,       sumPt2, pass);
+
+      //if ( sumPt < 25 && icut == 0 && jcut == 0 )
+      //  printf("sumPt = %6.4f   sumPt2 = %6.4f   leadPt = %6.4f   yyPt = %6.4f   nJets = %2d   NPV = %2d   Pass = %1d \n",
+      //      sumPt, sumPt2, leadpt, yypt, nTrueJets, nPrimaryVtxs, pass); 
+      
+      for ( xAOD::Photon *ph : ph_presel) { 
+        double ptcone20 = ph->isolationValue(xAOD::Iso::ptcone20)/HG::GeV;
+        double ptvarcone20 = -999; //ph->isolationValue(xAOD::Iso::ptvarcone20)/HG::GeV;
+        double topoetcone20 = ph->isolationValue(xAOD::Iso::topoetcone20)/HG::GeV;
+        
+        if (pass) {
+          histoStore()->fillTH1F(  "h_pt20_passPV0"+ZcutName+jCutName, ptcone20);
+          histoStore()->fillTH1F( "h_ptv20_passPV0"+ZcutName+jCutName, ptvarcone20);
+          histoStore()->fillTH1F(  "h_tp20_passPV0"+ZcutName+jCutName, topoetcone20);
+        } else {
+          histoStore()->fillTH1F(  "h_pt20_failPV0"+ZcutName+jCutName, ptcone20);
+          histoStore()->fillTH1F( "h_ptv20_failPV0"+ZcutName+jCutName, ptvarcone20);
+          histoStore()->fillTH1F(  "h_tp20_failPV0"+ZcutName+jCutName, topoetcone20);
+        }
+      }
+    }
+
+    //plot efficiencies for different |z(truth)-z(reco)| requirements using NN vertex
+    for ( int icut(0); icut < nZcuts; icut++ ) {
+      TString ZcutName = ZcutNames[icut];
+      bool pass = ( nnabsdz < Zcuts[icut] );
+      
+      histoStore()->fillTProfile(    "h_nneff_cut"+ZcutName+jCutName,            0, pass);
+      histoStore()->fillTProfile(    "h_nneff_nPV"+ZcutName+jCutName, nPrimaryVtxs, pass); 
+      histoStore()->fillTProfile(     "h_nneff_mu"+ZcutName+jCutName,   averageIPC, pass);
+      histoStore()->fillTProfile(   "h_nneff_yypt"+ZcutName+jCutName,         yypt, pass);
+      histoStore()->fillTProfile(   "h_nneff_phpt"+ZcutName+jCutName,       leadpt, pass);
+      histoStore()->fillTProfile(   "h_nneff_njet"+ZcutName+jCutName,    nTrueJets, pass);
+      histoStore()->fillTProfile(   "h_nneff_nlep"+ZcutName+jCutName, nTrueLeptons, pass);
+      histoStore()->fillTProfile(   "h_nneff_nobj"+ZcutName+jCutName, nTrueObjects, pass);
+      histoStore()->fillTProfile(  "h_nneff_sumpt"+ZcutName+jCutName,        sumPt, pass);
+      histoStore()->fillTProfile( "h_nneff_sumpt2"+ZcutName+jCutName,       sumPt2, pass);
+    }
+    
+    //plot efficiencies for different |z(truth)-z(reco)| requirements using hybrid vertex
+    for ( int icut(0); icut < nZcuts; icut++ ) {
+      TString ZcutName = ZcutNames[icut];
+      bool pass = ( myabsdz < Zcuts[icut] );
+      
+      histoStore()->fillTProfile(    "h_myeff_cut"+ZcutName+jCutName,            0, pass);
+      histoStore()->fillTProfile(    "h_myeff_nPV"+ZcutName+jCutName, nPrimaryVtxs, pass); 
+      histoStore()->fillTProfile(     "h_myeff_mu"+ZcutName+jCutName,   averageIPC, pass);
+      histoStore()->fillTProfile(   "h_myeff_yypt"+ZcutName+jCutName,         yypt, pass);
+      histoStore()->fillTProfile(   "h_myeff_phpt"+ZcutName+jCutName,       leadpt, pass);
+      histoStore()->fillTProfile(   "h_myeff_njet"+ZcutName+jCutName,    nTrueJets, pass);
+      histoStore()->fillTProfile(   "h_myeff_nlep"+ZcutName+jCutName, nTrueLeptons, pass);
+      histoStore()->fillTProfile(   "h_myeff_nobj"+ZcutName+jCutName, nTrueObjects, pass);
+      histoStore()->fillTProfile(  "h_myeff_sumpt"+ZcutName+jCutName,        sumPt, pass);
+      histoStore()->fillTProfile( "h_myeff_sumpt2"+ZcutName+jCutName,       sumPt2, pass);
+    }
+  }
+
+  return EL::StatusCode::SUCCESS;
+}

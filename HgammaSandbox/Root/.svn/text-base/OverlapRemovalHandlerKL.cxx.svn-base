@@ -1,0 +1,109 @@
+#include "HgammaSandbox/OverlapRemovalHandlerKL.h"
+#include <HGamAnalysisFramework/HgammaAnalysis.h>
+
+namespace HG {
+
+  SG::AuxElement::Decorator<char> OverlapRemovalHandlerKL::outputDecorator("overlaps");
+  SG::AuxElement::Accessor<char>  OverlapRemovalHandlerKL::outputAccessor("overlaps");
+
+ //______________________________________________________________________________
+  OverlapRemovalHandlerKL::OverlapRemovalHandlerKL(TString name)
+  : m_name(name)
+  { }
+
+  //______________________________________________________________________________
+  OverlapRemovalHandlerKL::~OverlapRemovalHandlerKL()
+  { }
+
+
+  //______________________________________________________________________________
+  EL::StatusCode OverlapRemovalHandlerKL::initialize(Config &conf)
+  {
+    //initialize AssociationUtils
+    m_overlapRemovalTool = new OverlapRemovalTool("OverlapRemovalTool");
+    m_overlapRemovalTool->setProperty("InputLabel", "");
+    //m_overlapRemovalTool->setProperty("LinkOverlapObjects", true);
+    m_overlapRemovalTool->msg().setLevel(MSG::INFO);
+    if (!m_overlapRemovalTool->initialize().isSuccess() ){
+      Error("initialize()", "Failed to properly initialize the OverlapremovalTool. Exiting." );
+      return EL::StatusCode::FAILURE;
+    }
+
+    //read matching mode from the config file
+    TString matchStr = conf.getStr(m_name+".MatchingMode","RapidityPhi");
+    if      (matchStr=="RapidityPhi") m_matchMode=y_phi;
+    else if (matchStr=="EtaPhi") m_matchMode=eta_phi;
+    else HG::fatal("Can not interpret MatchingMode "+matchStr);
+    
+
+    m_e_DR_y    = conf.getNum(m_name+".Electron_DR_Photon",0.4);
+    m_jet_DR_y  = conf.getNum(m_name+".Jet_DR_Photon",0.4);
+    m_jet_DR_e  = conf.getNum(m_name+".Jet_DR_Electron",0.2);
+    m_e_DR_jet  = conf.getNum(m_name+".Electron_DR_Jet",0.4);
+    m_mu_DR_y   = conf.getNum(m_name+".Muon_DR_Photon",0.4);
+    m_mu_DR_jet = conf.getNum(m_name+".Muon_DR_Jet",0.0);
+
+    return EL::StatusCode::SUCCESS;
+  }
+
+
+  //call the official AssociationUtil/OverlapRemovalTool which decorates overlapping objects based on Harmonization recommendation
+  //______________________________________________________________________________
+  void OverlapRemovalHandlerKL::decorateOverlaps(xAOD::PhotonContainer &photonContainer,
+						 xAOD::JetContainer &jetContainer, 
+						 xAOD::ElectronContainer &electronContainer,
+						 xAOD::MuonContainer &muonContainer)
+  {    
+    m_overlapRemovalTool->removeOverlaps(&electronContainer, &muonContainer,&jetContainer,0,&photonContainer);
+  }
+  
+  //decrate the overlapping objects based on HGam strategy
+  void OverlapRemovalHandlerKL::decorateModifiedOverlaps(xAOD::PhotonContainer &photonContainer,
+							 xAOD::JetContainer &jetContainer, 
+							 xAOD::ElectronContainer &electronContainer,
+							 xAOD::MuonContainer &muonContainer)
+  {
+    //add the "overlaps" label to each object
+    initializeDecoration(photonContainer);
+    initializeDecoration(electronContainer);
+    initializeDecoration(muonContainer);
+    initializeDecoration(jetContainer);
+   
+    // 1. remove electrons overlapping with photons
+    for(auto electron:electronContainer){
+      if(overlap(electron,photonContainer,m_e_DR_y)) (outputDecorator)(*electron) = true;}
+    
+    // 2. jets
+    // 2.a remove jets overlapping with photons
+    for(auto jet:jetContainer){     
+      if(overlap(jet,photonContainer,m_jet_DR_y)) (outputDecorator)(*jet) = true;
+      for(auto electron:electronContainer){
+	if((outputAccessor)(*electron)) continue;
+	if((electron->p4()).DeltaR(jet->p4())<m_jet_DR_e) (outputDecorator)(*jet) = true;}}
+
+    // 3. remove electrons too close to jets (usually 0.4)
+    for(auto electron:electronContainer){
+      if(overlap(electron,jetContainer,m_e_DR_jet)) (outputDecorator)(*electron) = true;}
+    
+    // 4. remove muons overlapping photons and jets
+    for(auto muon:muonContainer){
+      if(overlap(muon,photonContainer,m_mu_DR_y)) (outputDecorator)(*muon) = true;
+      for(auto jet:jetContainer){
+	if((outputAccessor)(*jet)) continue;
+	if((jet->p4()).DeltaR(muon->p4())<m_mu_DR_jet) (outputDecorator)(*muon) = true;}}
+  }
+
+  //remove overlaps based on decoration
+  void OverlapRemovalHandlerKL::removeOverlaps(xAOD::PhotonContainer &photonContainer,
+					       xAOD::JetContainer &jetContainer, 
+					       xAOD::ElectronContainer &electronContainer,
+					       xAOD::MuonContainer &muonContainer)
+  {
+    removeOverlaps(electronContainer);
+    removeOverlaps(jetContainer);
+    removeOverlaps(muonContainer);
+  }
+  
+
+
+}// namespace HG

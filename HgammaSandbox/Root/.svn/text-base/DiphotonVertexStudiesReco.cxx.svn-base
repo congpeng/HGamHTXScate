@@ -1,0 +1,189 @@
+#include "HgammaSandbox/DiphotonVertexStudiesReco.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+
+#include "PhotonVertexSelection/PhotonVertexHelpers.h"
+#include "PhotonVertexSelection/PhotonPointingTool.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(DiphotonVertexStudiesReco)
+
+
+
+DiphotonVertexStudiesReco::DiphotonVertexStudiesReco(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+
+
+DiphotonVertexStudiesReco::~DiphotonVertexStudiesReco()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+EL::StatusCode DiphotonVertexStudiesReco::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  //histoStore()->createTH1F("m_yy", 60, 110, 140);
+  
+  // Vertex selection tool
+  CP::PhotonPointingTool *mypointTool = new CP::PhotonPointingTool("PointingTool");
+  if (mypointTool->initialize().isFailure())
+    HG::fatal("Failed vertex init");
+
+  ToolHandle<CP::IPhotonPointingTool> mytpoint(mypointTool);
+
+  m_vtxTool = new CP::PhotonVertexSelectionTool("PhotonVertexSelectionTool");
+  CP_CHECK("DiphotonVertexStudiesReco", m_vtxTool->setProperty("PhotonPointingTool", mytpoint));
+
+  if (m_vtxTool->initialize().isFailure())
+    HG::fatal("Failed vertex init");
+    
+  TString effs = ";Efficiency / Bin"; 
+  for ( TString cut: { "_500um", "_3mm", "_5mm", "_10mm" } ) {
+    for ( TString selType: { "PV", "NN", "HB" } ) {
+      TString effType = "h_eff_"+selType;
+      histoStore()->createTProfile(    effType+"_arb"+cut,   1,    0,     1, "; Arbitrary Unit"+effs);
+      histoStore()->createTProfile(    effType+"_NPV"+cut,   8,    0,    40, "; N_{PV}"+effs);
+      histoStore()->createTProfile(     effType+"_mu"+cut,   8,    0,    40, "; #LT#mu#GT"+effs);
+      histoStore()->createTProfile(   effType+"_yypt"+cut,  40,    0,   200, "; p^{yy}_{T} [GeV]"+effs);
+      histoStore()->createTProfile(   effType+"_phpt"+cut,  40,    0,   200, "; Photon p^{lead}_{T} [GeV]"+effs);
+      histoStore()->createTProfile(  effType+"_sumpt"+cut, 100,    0,   400, "; Sum of p_{T} [GeV]"+effs);
+      histoStore()->createTProfile( effType+"_sumpt2"+cut, 100,    0,  4000, "; Sum of p_{T}^{2} [GeV^{2}]"+effs);
+    }
+  }
+
+  histoStore()->createTH1F(     "h_arb",    1,   0,    1,    "" ); 
+  histoStore()->createTH1F(     "h_NPV",    8,   0,   40,    "" ); 
+  histoStore()->createTH1F(      "h_mu",    8,   0,   40,    "" ); 
+  histoStore()->createTH1F(    "h_yypt",   40,   0,  200,    "" ); 
+  histoStore()->createTH1F(    "h_phpt",   40,   0,  200,    "" ); 
+  histoStore()->createTH1F(   "h_sumpt",  100,   0,  200,    "" ); 
+  histoStore()->createTH1F(  "h_sumpt2",  100,   0, 4000,    "" ); 
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode DiphotonVertexStudiesReco::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+  
+  //Get Truth Particles
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticles" ).isFailure() )
+    HG::fatal("Cannot access TruthParticle");
+  
+  // Get Truth Photons and Order them
+  std::vector<const xAOD::TruthParticle*> truePhotons;
+  for ( const xAOD::TruthParticle *ptcl : *truthPtcls ) {
+    if ( !HG::isGoodTruthPhoton(ptcl) ) continue;
+    if ( !HG::isFromHiggs(ptcl) ) continue;
+    
+    // Fill vector truePhotons with pt sorted photons to access leading and subleading photons
+    unsigned int i = 0; 
+    while( i<truePhotons.size() && ptcl->pt() < truePhotons[i]->pt()) 
+      i++; 
+    truePhotons.insert(  truePhotons.begin() + i, ptcl);
+  }
+  //if (truePhotons.size() != 2 ) return EL::StatusCode::SUCCESS;
+  
+  // Reject Dalitz
+  if ( HG::isDalitz(truthPtcls) ) return EL::StatusCode::SUCCESS;
+   
+  //Get Photon Pre-Selection
+  xAOD::PhotonContainer photons = photonHandler()->getCorrectedContainer();
+  xAOD::PhotonContainer presel  = photonHandler()->applyPreSelection(photons);
+  if (presel.size() < 2) return EL::StatusCode::SUCCESS;
+  presel.resize(2);
+  
+  //Get Photon Pointing Vtx
+  const xAOD::Vertex *vtxNN = nullptr;
+  m_vtxTool->getVertex(presel, vtxNN).ignore();
+ 
+  //Get Hardest Vertex
+  const xAOD::VertexContainer *vertices = nullptr;
+  if (event()->retrieve(vertices, "PrimaryVertices").isFailure())
+    HG::fatal("Couldn't retrieve PrimaryVertices, exiting!");
+  const xAOD::Vertex *vtxPV = xAOD::PVHelpers::getHardestVertex(vertices);
+
+  // Get Vertex Positions
+  double ztrue = truePhotons[0]->prodVtx()->z();
+  double zNN   = vtxNN->z();
+  double zPV   = vtxPV->z();
+
+  double absNN = fabs(ztrue - zNN);
+  double absPV = fabs(ztrue - zPV);
+  //printf("%6.4f   %6.4f   %6.4f   %6.4f   %6.4f \n", ztrue, zPV, zNN, absPV, absNN );
+ 
+  static const int nCuts = 4;
+  static TString cutNames[nCuts] = { "_500um", "_3mm", "_5mm", "_10mm" };
+  static double  cutVals[nCuts] = { 0.5, 3, 5, 10 };
+
+  static const int nTypes = 2;
+  static TString selTypes[nTypes] = { "PV",  "NN" };
+  double selDiff[nTypes] = { absPV, absNN };
+
+  //Get Variables of Interest
+  int NPV = vertices->size();
+  double avgmu = eventInfo()->averageInteractionsPerCrossing();
+  
+  double leadpt = presel[0]->pt()/HG::GeV;
+  double yypt = (presel[0]->p4() + presel[1]->p4()).Pt()/HG::GeV;
+  
+  double sumPt  = xAOD::PVHelpers::getVertexSumPt( vtxNN, 1)/HG::GeV;
+  double sumPt2 = xAOD::PVHelpers::getVertexSumPt( vtxNN, 2)/(HG::GeV*HG::GeV);
+
+  histoStore()->fillTH1F(     "h_arb",      0 );
+  histoStore()->fillTH1F(     "h_NPV",    NPV );
+  histoStore()->fillTH1F(      "h_mu",  avgmu );
+  histoStore()->fillTH1F(    "h_yypt",   yypt );
+  histoStore()->fillTH1F(    "h_phpt", leadpt );
+  histoStore()->fillTH1F(   "h_sumpt",  sumPt );
+  histoStore()->fillTH1F(  "h_sumpt2", sumPt2 );
+
+  //Plot Profiles
+  for( int iType(0); iType < nTypes; iType++ ) {
+    TString effHead = "h_eff_"+selTypes[iType];
+    //double diff = selDiff[iType];
+    double diff = 999;
+    if (iType==0) diff = absPV;
+    else diff = absNN;
+
+    for( int iCut(0); iCut < nCuts; iCut++ ) {
+      bool pass = (diff < cutVals[iCut]);
+      //printf( "%6.4f   %6d \n", diff, pass ); 
+      TString cutName = cutNames[iCut];
+
+      histoStore()->fillTProfile(     effHead+"_arb"+cutName,      0,  pass);
+      histoStore()->fillTProfile(     effHead+"_NPV"+cutName,    NPV,  pass);
+      histoStore()->fillTProfile(      effHead+"_mu"+cutName,  avgmu,  pass);
+      histoStore()->fillTProfile(    effHead+"_yypt"+cutName,   yypt,  pass);
+      histoStore()->fillTProfile(    effHead+"_phpt"+cutName, leadpt,  pass);
+      histoStore()->fillTProfile(   effHead+"_sumpt"+cutName,  sumPt,  pass);
+      histoStore()->fillTProfile(  effHead+"_sumpt2"+cutName, sumPt2,  pass);
+
+    }
+  }
+
+  return EL::StatusCode::SUCCESS;
+}

@@ -1,0 +1,7 @@
+const double pi = 3.14159;
+
+double DeltaPhi(double phi_1, double phi_2);
+double ModDeltaPhi(double phi_1, double phi_2);
+double DeltaEta(double eta_1, double eta_2);
+double ModDeltaEta(double eta_1, double eta_2);
+double DeltaR(double phi_1, double eta_1, double phi_2, double eta_2);

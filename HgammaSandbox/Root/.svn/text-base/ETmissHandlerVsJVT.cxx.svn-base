@@ -1,0 +1,715 @@
+#include "HgammaSandbox/ETmissHandlerVsJVT.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "xAODBase/IParticleHelpers.h"
+#include <EventLoop/Worker.h>
+#include "xAODBase/IParticle.h" 
+
+#include "xAODMissingET/MissingET.h"
+#include "xAODMissingET/MissingETContainer.h"
+#include "HGamAnalysisFramework/HgammaHandler.h"
+#include "HgammaSandbox/OverlapRemovalHandlerExample.h"
+#include "xAODTruth/TruthParticleContainer.h"
+#include "xAODTruth/TruthParticle.h"
+#include "xAODTruth/xAODTruthHelpers.h"
+#include "xAODTruth/TruthParticleAuxContainer.h"
+
+#include "PATCore/TAccept.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(ETmissHandlerVsJVT)
+
+
+
+ETmissHandlerVsJVT::ETmissHandlerVsJVT(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+ETmissHandlerVsJVT::~ETmissHandlerVsJVT()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+EL::StatusCode ETmissHandlerVsJVT::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+    
+  histoStore()->createTH1F("MET_Truth_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{T,MET_Truth_x}}[GeV]");
+  histoStore()->createTH1F("MET_Truth_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{T,MET_Truth_y}}[GeV]");
+  histoStore()->createTH1F("MET_Truth_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,MET_Truth}}[GeV]");
+
+  histoStore()->createTH1F("MET_Truth_NoInt_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{T,MET_Truth_NoInt_x}}[GeV]");
+  histoStore()->createTH1F("MET_Truth_NoInt_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{T,MET_Truth_NoInt_y}}[GeV]");
+  histoStore()->createTH1F("MET_Truth_NoInt_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,MET_Truth_NoInt}}[GeV]");
+
+
+  histoStore()->createTH1F("METHandler_TST_07_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_07_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_07_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_07_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_07_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_07_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  
+  histoStore()->createTH1F("METHandler_TST_08_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_08_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_08_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_08_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_08_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_08_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+
+  histoStore()->createTH1F("METHandler_TST_09_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_09_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_09_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_09_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_09_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_09_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+
+  histoStore()->createTH1F("METHandler_TST_097_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_097_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_097_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_097_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_097_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_097_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+
+
+  histoStore()->createTH1F("METHandler_TST_07_InxAOD_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_07_InxAOD_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_08_InxAOD_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_08_InxAOD_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_09_InxAOD_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_09_InxAOD_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_097_InxAOD_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_097_InxAOD_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+
+  histoStore()->createTH1F("JVTrecal",100,-2,2,";#it{JVTrecal};#it{Events}");
+  histoStore()->createTH1F("JVTreco",100,-2,2,";#it{JVTreco};#it{Events}");
+  histoStore()->createTH1F("JVTrecal_Vs_JVTreco",100,-2,2,";#it{JVTrecal-JVTreco/(JVTrecal+JVTreco)};#it{Events}");
+
+  histoStore()->createTH1F("BadJVTJetpt",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{p_{T}};#it{Events}");
+  histoStore()->createTH1F("BadJVTJeteta",120,-5,5,";#it{#eta};#it{Events}");
+
+  histoStore()->createTH1F("UncalJVT_CalJvt",100,-2,2,";UncalJvt-CalJvt;Events");
+
+  histoStore()->createTH1F("METHandler_TST_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_x",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{x,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerTST}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_y",n_bins_ETmiss_xy,n_min_ETmiss_xy,n_max_ETmiss_xy,";#it{E^{miss}_{y,HandlerCST}}[GeV]");
+  histoStore()->createTH1F("METHandler_TST_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+  histoStore()->createTH1F("METHandler_CST_Total",n_bins_ETmiss_Total,n_min_ETmiss_Total,n_max_ETmiss_Total,";#it{E^{miss}_{T,Handler}}[GeV]");
+
+  histoStore()->createTH1F("cut_flow",9,0,9,"Number Of Jets;;Events");
+  TAxis *axis = histoStore()->getTH1F("cut_flow")->GetXaxis();
+  HG::StrV binLabels = {"Jets from Handler","JVT 07 Recalc","JVT 08 Recalc","JVT 09 Recalc","JVT 097 Recalc","JVT 07 AuxData","JVT 08 AuxData","JVT 09 AuxData","JVT 097 AuxData"};
+  for (size_t i=0;i<binLabels.size();++i)
+    axis->SetBinLabel(i+1,binLabels[i]);
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool ETmissHandlerVsJVT::passJVT(xAOD::Jet* jet = NULL, const xAOD::Vertex* truthVertex = NULL,  const xAOD::TrackParticleContainer* trkCont = NULL, double RejectionCut = 0., bool is_JVT = true){
+
+
+  int PileUp_Tracks = 0;
+
+  // Look at the number of pile-up tracks : see if track matches the PV with the TrackSelection tool and compare if its true vertex corresponds to PV.
+
+  // for (const auto& trk : *trkCont) {
+  //   if(m_selectTool->accept(*trk,truthVertex) && trk->vertex() && trk->vertex()!=truthVertex && trk->pt()<30e3) ++PileUp_Tracks;
+  // }
+
+
+
+  std::vector<const xAOD::TrackParticle*> jettracks;   // Get the reconstructed tracks of the jet.
+  if(!jet->getAssociatedObjects(xAOD::JetAttribute::GhostTrack,jettracks)){
+    Warning("EvaluateJVT()","Jet has no ghost track");
+    return false;
+  }
+  if(jettracks.size()==0)return false;
+
+  double ptsum_all = 0;
+  double ptsum_pv = 0;
+  double ptsum_pileup = 0;
+
+  // Iterate over all tracks associated to the jet.
+
+  for (size_t i = 0; i < jettracks.size(); i++) {
+    const xAOD::TrackParticle* track= static_cast<const xAOD::TrackParticle*>(jettracks[i]); // Track passes vertex matching and track selection.
+    if(track==NULL)continue;
+    bool accept = (track->pt()>500 && m_selectTool->accept(*track,truthVertex)); // if track could match vertex even if it is pile-up
+    if(accept) ptsum_all += track->pt(); // sum of all tracks pT : pile-up and good tracks.
+    if(accept && ((!track->vertex() && fabs((track->z0()+track->vz()-truthVertex->z())*sin(track->theta()))<3.) || track->vertex()==truthVertex)) ptsum_pv += track->pt();// If real PV track
+    if(accept && track->vertex() && track->vertex()!=truthVertex){ ptsum_pileup += track->pt();++PileUp_Tracks;} // If pile-up track
+  }
+  if(!PileUp_Tracks) ++PileUp_Tracks;
+
+  double JVF = ptsum_all>0 ? ptsum_pv/ptsum_all : -1;
+  double Rpt =  ptsum_pv/jet->pt();
+    //jet->pt() > 0 ? ptsum_pv/jet->pt() : -1 ; 
+  double corrJVF = ptsum_pv+ptsum_pileup>0 ? ptsum_pv/(ptsum_pv+100*ptsum_pileup/PileUp_Tracks) : -1;
+  double JVT = corrJVF>=0 ? likelihood->Interpolate(corrJVF,std::min(Rpt,(double)1.)) : -0.1;
+
+  double recoJVT= hjvtagup->updateJvt(*jet)*1.000;
+
+  if(RejectionCut == 0.7 && jet->pt()/HG::GeV > 20 ){
+    histoStore()->fillTH1F("JVTrecal",JVT);
+    histoStore()->fillTH1F("JVTreco",recoJVT);
+    histoStore()->fillTH1F("JVTrecal_Vs_JVTreco",(JVT-recoJVT)/(JVT+recoJVT));
+    if( fabs((JVT-recoJVT)/(JVT+recoJVT)) > 0.5 && ( jet->pt()/HG::GeV < 50. && fabs(jet->eta()) < 2.4 )){
+      histoStore()->fillTH1F("BadJVTJetpt",jet->pt()/HG::GeV);
+      histoStore()->fillTH1F("BadJVTJeteta",jet->eta());
+    }
+  }
+
+  jettracks.clear();
+  if( is_JVT ){
+    if( JVT < RejectionCut && ( jet->pt()/HG::GeV < 50. && fabs(jet->eta()) < 2.4 ) ){
+      return false; 
+    }else{
+      return true;
+    }
+  }else{
+    if( JVF > RejectionCut ){
+      return false; 
+    }else{
+      return true;
+    }
+
+  } 
+}
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool ETmissHandlerVsJVT::getJVTContainer(xAOD::JetContainer& treatedJets, const xAOD::Vertex* truthVertex, double RejectionCut, bool is_JVT)
+{
+
+  // Returns a JetContainer with jets satisfying the desired JVT cut. Used JVT is one recalculated by passJVT
+  // Jets are previously calibrated. 
+
+  // Get all the track particles in the event
+
+  const xAOD::TrackParticleContainer* trkCont = NULL;
+  if(event()->retrieve(trkCont,"InDetTrackParticles").isFailure()){
+    Error("EvaluateJVT()","Cannot retrieve track particles.Exiting");
+    
+    return false;
+  }
+
+
+  xAOD::Jet* jet = new xAOD::Jet();
+
+  xAOD::JetContainer::iterator itr_begin=treatedJets.begin();
+  xAOD::JetContainer::iterator itr_end=treatedJets.end();
+
+  bool passesJVTcut;
+
+
+  for( ; itr_begin!=itr_end ;++itr_begin){
+    jet=static_cast<xAOD::Jet*>(*itr_begin);
+    if(jet==NULL || !jet->isAvailable<int>("OriginCorrected","")){
+      treatedJets.erase(itr_begin);
+      itr_begin-=1;
+      itr_end-=1;
+      continue;
+    }
+    // && ( jet->pt()/HG::GeV < 50. && fabs(jet->eta()) < 2.4 )
+    passesJVTcut=passJVT(jet,truthVertex,trkCont,RejectionCut,is_JVT);
+    if( !passesJVTcut ){
+      treatedJets.erase(itr_begin);
+      itr_begin-=1;
+      itr_end-=1;
+      continue;
+    }
+
+  }
+
+  return true;
+}
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void ETmissHandlerVsJVT::updateContainerJVT(xAOD::JetContainer& jets, double JVTcut)
+{
+
+  // Returns the JetContainer with a JVTcut applied on it. The used JVT value is the one in Aux data updated using JetVertexTaggerTool for calibrated jets.
+
+
+  //  hjvtagup->modify(jets);
+
+
+  xAOD::Jet* jet=new xAOD::Jet();
+
+  float prevJvt;
+  float newJvt;
+
+  for( auto jt = jets.begin() ; jt != jets.end(); ){
+    jet = static_cast<xAOD::Jet*>(*jt);
+    //    hjvtagup->updateJvt(*jet);
+    prevJvt=jet->auxdata<float>("Jvt");
+    newJvt=hjvtagup->updateJvt(*jet);
+    histoStore()->fillTH1F("UncalJVT_CalJvt",newJvt-prevJvt);
+    if(  newJvt < JVTcut && ( jet->pt()/HG::GeV < 50. && fabs(jet->eta()) < 2.4 ))
+
+      //    if(  hjvtagup->updateJvt(*jet);Jvt < JVTcut && ( jet->pt()/HG::GeV < 50. && fabs(jet->eta()) < 2.4 ))
+      jets.erase(jt);
+    else
+      ++jt;
+  }
+}
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+EL::StatusCode ETmissHandlerVsJVT::initialize()
+{
+  std::cout << "Initialize HGamma Analysis" << std::endl;
+  HgammaAnalysis::initialize();
+  m_ETmissHandler = new HG::ETmissHandlerLMMC15("m_ETmissHandler");
+  m_ETmissHandler->initialize(*config(), event());
+
+  m_sampleName=wk()->inputFile()->GetName();
+
+  m_isMC=false;
+  m_isGluonFusion = false;
+  m_isTopFusion = false;
+  m_isVBF = false;
+  m_isZH = false;
+  m_isWH = false;
+
+  std::cout << "Initialize Tools" << std::endl;
+  m_selectTool=new InDet::InDetTrackSelectionTool("TrackSelection");
+  m_selectTool->setCutLevel(InDet::CutLevel::Loose);
+  CP_CHECK("initialize()", m_selectTool->initialize());
+
+  m_jet_JVT_Tool=new JetVertexTaggerTool("jvtag");
+  hjvtagup = ToolHandle<IJetUpdateJvt>("jvtag");
+  bool fail = false;
+  fail |= m_jet_JVT_Tool->setProperty("JVTFileName","JetMomentTools/JVTlikelihood_20140805.root").isFailure();
+  fail |= m_jet_JVT_Tool->initialize().isFailure();
+  if ( fail ) {
+    std::cout << "Tool initialialization failed!" << std::endl;
+    return StatusCode::FAILURE;
+  }
+  m_jetCleaningTool= new JetCleaningTool("jetCleaningTool");
+  CP_CHECK("initialize()",m_jetCleaningTool->setProperty("CutLevel", "LooseBad")); // also "TightBad"
+  CP_CHECK("initialize()",m_jetCleaningTool->setProperty("DoUgly", false));
+  CP_CHECK("initialize()",m_jetCleaningTool->initialize());
+
+  JVT_LH_file=new TFile("/afs/cern.ch/work/a/alopezso/private/AnalysisHGam/JetVertexTagger/data/JVTlikelihood_20140805.root","READ");
+  if(!JVT_LH_file->IsOpen()){
+    Error("initialize()","Couldn't open the JVT likelihood file or doesn't exist. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+  likelihood=(TH2F*)JVT_LH_file->Get("JVTRootCore_kNN100trim_pt20to50_Likelihood");
+  if(likelihood == NULL){
+    Error("initialize()","Couldn't retrieve the JVT likelihood histogram. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+  std::cout << "End Initialize" << std::endl;
+  return EL::StatusCode::SUCCESS;
+}
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+EL::StatusCode ETmissHandlerVsJVT::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+
+  m_isMC = isMC();
+
+  if( m_isMC ){
+
+    m_isGluonFusion = false;
+    m_isTopFusion = false;
+    m_isVBF = false;
+    m_isZH = false;
+    m_isWH = false;
+
+    if( m_sampleName.Contains("WH125_gamgam") ) m_isWH = true;
+    if( m_sampleName.Contains("ZH125_gamgam") ) m_isZH = true;
+    if( m_sampleName.Contains("ttH125_gamgam") ) m_isTopFusion = true;
+    if( m_sampleName.Contains("ggH125_gamgam") ) m_isGluonFusion = true;
+    if( m_sampleName.Contains("VBFH125_gamgam") ) m_isVBF = true;
+  }
+
+
+  //-----------------------------------------------------------------------------------------------------
+  //     Studies of ETmissHandler performance depending on the JVT cut
+  //-----------------------------------------------------------------------------------------------------
+
+  ++m_NumberOfEvents;
+ 
+  eventHandler()->pass();
+
+  xAOD::ElectronContainer ElectronContainer=electronHandler()->getCorrectedContainer();
+  xAOD::PhotonContainer PhotonContainer=photonHandler()->getCorrectedContainer();
+  xAOD::MuonContainer MuonContainer=muonHandler()->getCorrectedContainer();
+  xAOD::JetContainer Jets=jetHandler()->getCorrectedContainer();
+
+
+  const xAOD::JetContainer* jets_assoc = 0;
+  if ( event()->retrieve( jets_assoc, "AntiKt4EMTopoJets" ).isFailure() ){
+    Error("execute()", "Failed to retrieve AntiKt4EMTopoJets container. Exiting." );
+    return EL::StatusCode::FAILURE;
+  }
+  const xAOD::ElectronContainer* electrons_assoc = 0;
+  if ( event()->retrieve( electrons_assoc, "Electrons" ).isFailure() ){
+    Error("execute()", "Failed to retrieve Electron container. Exiting." );
+    return EL::StatusCode::FAILURE;
+  }
+  const xAOD::PhotonContainer* photons_assoc = 0;
+  if ( event()->retrieve( photons_assoc, "Photons" ).isFailure() ){
+    Error("execute()", "Failed to retrieve Photon container. Exiting." );
+    return EL::StatusCode::FAILURE;
+  }
+  const xAOD::MuonContainer* muons_assoc = 0;
+  if ( event()->retrieve( muons_assoc, "Muons" ).isFailure() ){
+    Error("execute()", "Failed to retrieve Muon container. Exiting." );
+    return EL::StatusCode::FAILURE;
+  }
+
+  bool setLinks = xAOD::setOriginalObjectLink(*jets_assoc, Jets);
+  if(!setLinks) {
+    Error("Failed to set original object links on Jets " ,"setlinks");
+  } 
+  setLinks=xAOD::setOriginalObjectLink(*electrons_assoc, ElectronContainer);
+  if(!setLinks) {
+    Error("Failed to set original object links on Electrons" ,"setlinks");
+  } 
+  // setLinks=xAOD::setOriginalObjectLink(*photons_assoc, PhotonContainer);
+  // if(!setLinks) {
+  //  Error("Failed to set original object links on Photons" ,"setlinks");
+  // } 
+  setLinks=xAOD::setOriginalObjectLink(*muons_assoc, MuonContainer);
+  if(!setLinks) {
+    Error("Failed to set original object links on Muons" ,"setlinks");
+  } 
+
+	
+  xAOD::ElectronContainer Electrons=electronHandler()->applySelection(ElectronContainer);
+  xAOD::PhotonContainer Photons=photonHandler()->applySelection(PhotonContainer);
+  xAOD::MuonContainer Muons=muonHandler()->applySelection(MuonContainer);
+
+
+  //Most basic selection step
+
+  if( Photons.size() < 2 ) return EL::StatusCode::SUCCESS;
+  TLorentzVector h = Photons[0]->p4() + Photons[1]->p4();
+  if( h.M()/HG::GeV < 105. || h.M()/HG::GeV > 160. )return EL::StatusCode::SUCCESS;
+
+  ++m_Counter;
+
+  std::string CST="CST";
+  std::string TST="TST";
+
+  for(unsigned int i=0 ; i < Jets.size() ; ++i){
+    histoStore()->fillTH1F("cut_flow",0);
+  }
+
+  xAOD::MissingET MET_Handler_TST=m_ETmissHandler->ETmissRebuilder(Photons,Jets,Electrons,Muons,TST);
+  xAOD::MissingET MET_Handler_CST=m_ETmissHandler->ETmissRebuilder(Photons,Jets,Electrons,Muons,CST);
+
+  // Get event primary vertices
+ 
+  const xAOD::VertexContainer* vxCont = 0;
+  if(event()->retrieve(vxCont,"PrimaryVertices").isFailure()){
+    Error("EvaluateJVT()","Cannot retrieve the primary vertices.Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+
+  const xAOD::TruthParticleContainer* truthParticles = 0 ; 
+
+  if(event()->retrieve(truthParticles,"TruthParticles").isFailure()){
+    Error("execute()", "Cannot retrieve the truth particles container. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+
+  const xAOD::TruthVertex* diphotonTruthVertex = NULL; // truthHiggs vertex
+
+  int higgsTruthPhotons=0;
+  float truthpT=0;
+  for(const xAOD::TruthParticle* tr_part : *truthParticles){
+
+    if( !HG::isGoodTruthPhoton(tr_part) ) continue;
+    if( !HG::isFromHiggs(tr_part) )continue;
+    ++higgsTruthPhotons;
+    
+    if( higgsTruthPhotons >= 2){
+      if( truthpT < tr_part->pt() ){truthpT=tr_part->pt() ; diphotonTruthVertex=tr_part->prodVtx(); }
+    }
+  }
+
+  if(diphotonTruthVertex == NULL ) return StatusCode::SUCCESS; // Reject event if the truth diphoton vertex cannot be matched to any primary vertex
+
+  const xAOD::Vertex* diphotonRecoVertex = NULL;
+
+  for(const xAOD::Vertex* vx : *vxCont ){
+    if( fabs(vx->z()-diphotonTruthVertex->z()) < 0.5 ) diphotonRecoVertex=vx; // Check if any of the PV can be identified as the Higgs vertex and keep it. 
+  }
+  
+
+  if(diphotonRecoVertex == NULL ) return StatusCode::SUCCESS; // Reject event if the truth diphoton vertex cannot be matched to any primary vertex
+
+
+  // Jet containers with cut on the JVT from DAODs updated for calibrated jets.
+
+  std::pair< xAOD::JetContainer*, xAOD::ShallowAuxContainer*> shallowCopy1 = xAOD::shallowCopyContainer(*jets_assoc);
+
+
+  xAOD::JetContainer jets_JVT_Recalc = *shallowCopy1.first;
+
+  setLinks = xAOD::setOriginalObjectLink(*jets_assoc, jets_JVT_Recalc);
+  if(!setLinks) {
+    Error("Failed to set original object links on the shallow copy of Jet Container " ,"setlinks");
+  }
+
+  for(xAOD::Jet* jet : jets_JVT_Recalc){
+    jetHandler()->calibrateJet(jet);
+    if( m_jetCleaningTool->accept(*jet)==0)return StatusCode::SUCCESS; // eliminate the event if a bad jet  is found. Since next jets are shallow copies of the same container, only need to do it once. 
+  }
+
+  if(!getJVTContainer(jets_JVT_Recalc,diphotonRecoVertex,0.7,true)){
+    Error("execute()","There was an error while applying JVT cuts on jets. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+
+  for(unsigned int i=0 ; i < jets_JVT_Recalc.size() ; ++i){
+    histoStore()->fillTH1F("cut_flow",1);
+  }
+  xAOD::MissingET MET_Handler_TST_07=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_Recalc,Electrons,Muons,TST);
+  xAOD::MissingET MET_Handler_CST_07=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_Recalc,Electrons,Muons,CST);
+
+  if(!getJVTContainer(jets_JVT_Recalc,diphotonRecoVertex,0.8,true)){
+    Error("execute()","There was an error while applying JVT cuts on jets. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+
+  for(unsigned int i=0 ; i < jets_JVT_Recalc.size() ; ++i){
+    histoStore()->fillTH1F("cut_flow",2);
+  }
+  xAOD::MissingET MET_Handler_TST_08=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_Recalc,Electrons,Muons,TST);
+  xAOD::MissingET MET_Handler_CST_08=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_Recalc,Electrons,Muons,CST);
+
+
+  if(!getJVTContainer(jets_JVT_Recalc,diphotonRecoVertex,0.9,true)){
+    Error("execute()","There was an error while applying JVT cuts on jets. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+  for(unsigned int i=0 ; i < jets_JVT_Recalc.size() ; ++i){
+    histoStore()->fillTH1F("cut_flow",3);
+  }
+  xAOD::MissingET MET_Handler_TST_09=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_Recalc,Electrons,Muons,TST);
+  xAOD::MissingET MET_Handler_CST_09=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_Recalc,Electrons,Muons,CST);
+
+  if(!getJVTContainer(jets_JVT_Recalc,diphotonRecoVertex,0.97,true)){
+    Error("execute()","There was an error while applying JVT cuts on jets. Exiting");
+    return EL::StatusCode::FAILURE;
+  }
+
+  for(unsigned int i=0 ; i < jets_JVT_Recalc.size() ; ++i){
+    histoStore()->fillTH1F("cut_flow",4);
+  }
+  xAOD::MissingET MET_Handler_TST_097=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_Recalc,Electrons,Muons,TST);
+  xAOD::MissingET MET_Handler_CST_097=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_Recalc,Electrons,Muons,CST);
+
+
+  // Jet containers with cut on the JVT from DAODs updated for calibrated jets.
+
+  std::pair< xAOD::JetContainer*, xAOD::ShallowAuxContainer*> shallowCopy2 = xAOD::shallowCopyContainer(*jets_assoc);
+
+  xAOD::JetContainer jets_JVT_AOD= *shallowCopy2.first;
+
+  setLinks = xAOD::setOriginalObjectLink(*jets_assoc, jets_JVT_AOD);
+  if(!setLinks) {
+    Error("Failed to set original object links to Uncalibrated shallow copy " ,"setlinks");
+  }
+  xAOD::JetContainer::iterator itr_uncal_begin=jets_JVT_AOD.begin();
+  xAOD::JetContainer::iterator itr_uncal_end=jets_JVT_AOD.end();
+
+  for( xAOD::Jet* uncalJet : jets_JVT_AOD ){
+    jetHandler()->calibrateJet(uncalJet);
+  }
+
+  updateContainerJVT(jets_JVT_AOD,0.7);
+
+  for(unsigned int i=0 ; i < jets_JVT_AOD.size() ; ++i){
+    histoStore()->fillTH1F("cut_flow",5);
+  }
+
+  xAOD::MissingET MET_Handler_TST_07_InxAOD=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_AOD,Electrons,Muons,TST);
+  xAOD::MissingET MET_Handler_CST_07_InxAOD=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_AOD,Electrons,Muons,CST);
+
+  updateContainerJVT(jets_JVT_AOD,0.8);
+
+  for(unsigned int i=0 ; i < jets_JVT_AOD.size() ; ++i){
+    histoStore()->fillTH1F("cut_flow",6);
+  }
+  xAOD::MissingET MET_Handler_TST_08_InxAOD=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_AOD,Electrons,Muons,TST);
+  xAOD::MissingET MET_Handler_CST_08_InxAOD=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_AOD,Electrons,Muons,CST);
+
+  updateContainerJVT(jets_JVT_AOD,0.9);
+  for(unsigned int i=0 ; i < jets_JVT_AOD.size() ; ++i){
+    histoStore()->fillTH1F("cut_flow",7);
+  }
+
+  xAOD::MissingET MET_Handler_TST_09_InxAOD=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_AOD,Electrons,Muons,TST);
+  xAOD::MissingET MET_Handler_CST_09_InxAOD=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_AOD,Electrons,Muons,CST);
+  
+  updateContainerJVT(jets_JVT_AOD,0.97);
+  for(unsigned int i=0 ; i < jets_JVT_AOD.size() ; ++i){
+    histoStore()->fillTH1F("cut_flow",8);
+  }
+
+  xAOD::MissingET MET_Handler_TST_097_InxAOD=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_AOD,Electrons,Muons,TST);
+  xAOD::MissingET MET_Handler_CST_097_InxAOD=m_ETmissHandler->ETmissRebuilder(Photons,jets_JVT_AOD,Electrons,Muons,CST);
+
+  //  overlapHandler()->removeOverlap(Photons,Jets,Electrons, Muons);
+
+  // Retrieving truth from the xAODs
+
+  const xAOD::MissingETContainer* TruthMET = 0;
+
+  if(event()->retrieve(TruthMET,"MET_Truth").isFailure()){
+    Error("execute()", "Failed to retrieve MET_Truth container. Exiting.");
+    return EL::StatusCode::FAILURE;
+  }
+
+  const xAOD::MissingET* MET_Truth_NoMuons=(*TruthMET)["Int"];
+  const xAOD::MissingET* MET_Truth_Muons=(*TruthMET)["IntMuons"];
+  const xAOD::MissingET* MET_Truth_NoInt=(*TruthMET)["NonInt"];
+
+  if(!MET_Truth_NoMuons){
+    Error("execute()","Couldn't find the variable Int in the MET_Truth container. Exiting.");
+    return EL::StatusCode::FAILURE;
+  }
+  if(!MET_Truth_Muons){
+    Error("execute()","Couldn't find the variable IntMuons in the MET_Truth container. Exiting.");
+    return EL::StatusCode::FAILURE;
+  }
+
+
+  MET_Truth_x=(MET_Truth_NoMuons->mpx()+MET_Truth_Muons->mpx())*0.001;
+  MET_Truth_y=(MET_Truth_NoMuons->mpy()+MET_Truth_Muons->mpy())*0.001;
+  MET_Truth_Total=TMath::Sqrt(TMath::Power(MET_Truth_x,2)+TMath::Power(MET_Truth_y,2));
+
+
+
+  histoStore()->fillTH1F("MET_Truth_x",(MET_Truth_NoMuons->mpx()+MET_Truth_Muons->mpx())*0.001);
+  histoStore()->fillTH1F("MET_Truth_y",(MET_Truth_NoMuons->mpy()+MET_Truth_Muons->mpy())*0.001);
+  histoStore()->fillTH1F("MET_Truth_Total",MET_Truth_Total);
+
+  histoStore()->fillTH1F("MET_Truth_NoInt_x",MET_Truth_NoInt->mpx()*0.001);
+  histoStore()->fillTH1F("MET_Truth_NoInt_y",MET_Truth_NoInt->mpy()*0.001);
+  histoStore()->fillTH1F("MET_Truth_NoInt_Total",MET_Truth_NoInt->met()*0.001);
+
+  histoStore()->fillTH1F("METHandler_TST_07_x",MET_Handler_TST_07.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_07_x",MET_Handler_CST_07.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_07_y",MET_Handler_TST_07.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_07_y",MET_Handler_CST_07.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_07_Total",MET_Handler_TST_07.met()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_07_Total",MET_Handler_CST_07.met()*0.001);
+
+  histoStore()->fillTH1F("METHandler_TST_08_x",MET_Handler_TST_08.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_08_x",MET_Handler_CST_08.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_08_y",MET_Handler_TST_08.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_08_y",MET_Handler_CST_08.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_08_Total",MET_Handler_TST_08.met()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_08_Total",MET_Handler_CST_08.met()*0.001);
+
+  histoStore()->fillTH1F("METHandler_TST_09_x",MET_Handler_TST_09.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_09_x",MET_Handler_CST_09.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_09_y",MET_Handler_TST_09.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_09_y",MET_Handler_CST_09.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_09_Total",MET_Handler_TST_09.met()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_09_Total",MET_Handler_CST_09.met()*0.001);
+
+  histoStore()->fillTH1F("METHandler_TST_097_x",MET_Handler_TST_097.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_097_x",MET_Handler_CST_097.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_097_y",MET_Handler_TST_097.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_097_y",MET_Handler_CST_097.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_097_Total",MET_Handler_TST_097.met()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_097_Total",MET_Handler_CST_097.met()*0.001);
+
+  histoStore()->fillTH1F("METHandler_TST_07_InxAOD_Total",MET_Handler_TST_07_InxAOD.met()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_07_InxAOD_Total",MET_Handler_CST_07_InxAOD.met()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_08_InxAOD_Total",MET_Handler_TST_08_InxAOD.met()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_08_InxAOD_Total",MET_Handler_CST_08_InxAOD.met()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_09_InxAOD_Total",MET_Handler_TST_09_InxAOD.met()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_09_InxAOD_Total",MET_Handler_CST_09_InxAOD.met()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_097_InxAOD_Total",MET_Handler_TST_097_InxAOD.met()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_097_InxAOD_Total",MET_Handler_CST_097_InxAOD.met()*0.001);
+
+  histoStore()->fillTH1F("METHandler_TST_x",MET_Handler_TST.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_x",MET_Handler_CST.mpx()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_y",MET_Handler_TST.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_y",MET_Handler_CST.mpy()*0.001);
+  histoStore()->fillTH1F("METHandler_TST_Total",MET_Handler_TST.met()*0.001);
+  histoStore()->fillTH1F("METHandler_CST_Total",MET_Handler_CST.met()*0.001);
+
+  delete shallowCopy1.first;
+  delete shallowCopy1.second;
+  delete shallowCopy2.first;
+  delete shallowCopy2.second;
+
+
+
+
+  return EL::StatusCode::SUCCESS;
+}
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+EL::StatusCode ETmissHandlerVsJVT::finalize(){
+
+  std::cout << "Number of events passing selection: " << m_Counter << std::endl;
+  std::cout << "Number of events in the dataset: " << m_NumberOfEvents << std::endl;
+
+
+  JVT_LH_file->Close();
+
+  if(m_selectTool){
+    delete m_selectTool;
+    m_selectTool=0;
+  }
+  if(m_jet_JVT_Tool){
+    delete m_jet_JVT_Tool;
+    m_jet_JVT_Tool=0;
+  }
+  // if( m_jetCleaningTool ){
+  //   delete m_jetCleaningTool;
+  //   m_jetCleaningTool=0;
+  // }
+
+  HgammaAnalysis::finalize();
+
+  return EL::StatusCode::SUCCESS;
+}

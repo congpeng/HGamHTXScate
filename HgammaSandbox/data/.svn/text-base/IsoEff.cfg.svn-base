@@ -1,0 +1,22 @@
+#######
+#
+# Top configuration file for the RecoEff analysis
+#
+#######
+
+
+##################################
+# Job steering setup
+   
+OutputDir:        outIso_ggH
+SampleName:       ggH
+InputFileList:    mc15_lists/input_mc15_ggH.txt
+BaseConfig:       HGamAnalysisFramework/HGamMC15.config
+
+
+##################################
+# Isolation Config
+HgammaAnalysis.SelectVertex:                       YES
+HgammaAnalysis.UseHardestVertex:                   YES
+HgammaAnalysis.CheckRelativePtCuts:                 NO
+PhotonHandler.Selection.ApplyIsoCut:                NO

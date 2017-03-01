@@ -1,0 +1,137 @@
+#include "HGamAnalysisFramework/HgammaUtils.h"
+#include "HGamAnalysisFramework/HistogramStore.h"
+#include "HGamAnalysisFramework/PhotonHandler.h"
+
+// Simple example to run over an xAOD file, loop over the events
+// and fill a couple of histograms. This is all done in one file
+// hence "all-in-one"
+// Dag Gillberg, Oct 24, 2014
+
+using namespace HG;
+
+int main(int argc, char* argv[]) {
+  const char *APP_NAME = argv[0];
+  printf("\n*******\n* Running %s\n*\n",APP_NAME);
+  TString usage=TString("\n\nUsage:\n  ")+APP_NAME+" INFILE OUTFILE\n";
+  
+  // First of all, do xAOD::Init(), or things might randomly go bad
+  const xAOD::TReturnCode FAILED = xAOD::TReturnCode::kFailure;
+  if ( xAOD::Init() == FAILED )
+    fatal("Failed with xAOD::Init()");
+
+  StatusCode sc;
+  
+  // 1. Input file to run over
+  TString inFN("~/eos/atlas/atlasgroupdisk/phys-higgs/HSG1/xAOD/DC14_mc8TeV_DAOD_HIGG1D1/DAOD_HIGG1D1_FullMCSkim.output.pool.root");
+  if (argc>1) inFN=argv[1];
+
+  // 2. Output file name
+  TString outFN = "output_AllInOne.root";
+  if (argc>2) outFN=argv[2];
+  
+  // 3. creat the output histograms
+  TFile *outFile = new TFile(outFN,"RECREATE");
+  // name, binning, and finally title. Title take the form: "top-title;x-title;y-title"
+
+   HistogramStore HistoStore;
+
+  HistoStore.createTH1F("Nphotons",40,-0.5,39.5,";#it{N}_{photon-clusters}");
+  HistoStore.createTH1F("m_yy",100,0,200,";#it{m}_{#gamma#gamma}");
+
+  gROOT->cd();
+  
+  /*
+   *
+   */
+  
+  // 4. open the input file
+  TFile *in_file = TFile::Open(inFN);
+  if ( in_file==NULL || in_file->IsZombie() ) {
+    if (inFN.Contains("eos")) 
+      printf("\nPerhaps you forgot:\n  mkdir -p ~/eos\n  eosmount ~/eos\n?\n");
+    fatal("Cannot open "+inFN+usage); 
+  }
+  
+  // 5. linkt it to the event
+  xAOD::TEvent event;
+  if ( event.readFrom(in_file) == FAILED )
+    fatal("Cannot read xAOD data from file "+inFN);
+  xAOD::TStore *store = new xAOD::TStore;
+
+  HG::PhotonHandler photonHandler("PhotonHandler",&event,store);
+
+  int Nevts = event.getEntries();
+  printf("\nWill loop over %d events\n",Nevts);
+  for ( int iEvt = 0; iEvt<Nevts; ++iEvt ) {
+
+    // load the current event
+    event.getEntry(iEvt);
+    
+    const xAOD::EventInfo *evtInfo = 0;
+    if ( event.retrieve(evtInfo, "EventInfo") == FAILED )
+      fatal("Cannot access EventInfo");
+
+    // event weight
+    double w = 1.0;
+
+    const xAOD::JetContainer *truthJets = 0;
+    if ( event.retrieve( truthJets, "AntiKt4TruthJets" ) == FAILED )
+      fatal("Cannot access Truth jets");
+
+    // 2. Get calibrated photons
+    xAOD::PhotonContainer orderdPhotons = photonHandler.getCorrectedContainer();
+    
+    // 3. create the subsets of loose and tight photons
+    xAOD::PhotonContainer loosePhotons(SG::VIEW_ELEMENTS);
+    xAOD::PhotonContainer tightPhotons(SG::VIEW_ELEMENTS);
+    for ( xAOD::Photon *gam : orderdPhotons ) {
+
+      // apply pT and eta pre-selection cuts
+      //if (!passPtEtaCuts(gam)) continue;
+      if (gam->pt()<25.0*HG::GeV) continue;
+
+      // require loose ID - better to use IsEM tool here ?
+      if (!gam->passSelection("Loose")) continue;
+      loosePhotons.push_back(gam);
+
+      // require tight ID - better to use IsEM tool here ?
+      if (!gam->passSelection("Tight")) continue;
+      tightPhotons.push_back(gam);
+    }
+    
+
+    // number of photons before any selection
+    int Ngams = tightPhotons.size();
+    HistoStore.fillTH1F("Nphotons",Ngams,w);
+    if (Ngams>=2) {
+      // construct poor-mans-version of diphoton mass
+      // simply by taking the leading two photons without
+      // any quality requirements
+      const xAOD::Photon &gam1 = *tightPhotons[0];
+      const xAOD::Photon &gam2 = *tightPhotons[1];
+
+      // diphoton invariant mass, in GeV
+      double myy   = (gam1.p4()+gam2.p4()).M()/GeV;
+      //double pT_yy = (gam1.p4()+gam2.p4()).Pt()/GeV;
+      //      double pT_y1 = gam1.p4().Pt();
+      //double pT_y2 = gam2.p4().Pt();
+      HistoStore.fillTH1F("m_yy",myy,w);
+    }
+    
+    // print some information to the screen
+    static int Nprinted=0;
+    if (Nprinted++<10) {
+      Info(APP_NAME,"Processing event %3d, with %2lu truth jets, %lu loose and %lu tight photons",
+           iEvt,truthJets->size(),loosePhotons.size(),tightPhotons.size());
+      for (const xAOD::Photon *gam : tightPhotons )
+        photonHandler.printPhoton(gam,"tight, selected photon");
+    }
+    
+  }
+
+  outFile->Write();
+  printf("\nSaved output to %s\n",outFile->GetName());
+  outFile->Close();
+  printf("All done\n");
+}
+

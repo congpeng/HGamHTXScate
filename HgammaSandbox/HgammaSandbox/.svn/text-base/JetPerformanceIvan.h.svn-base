@@ -1,0 +1,27 @@
+#ifndef HgammaSandbox_JetPerformanceIvan_H
+#define HgammaSandbox_JetPerformanceIvan_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+class JetPerformanceIvan : public HgammaAnalysis
+{
+private:
+  class impl;
+  impl *p; //!
+
+public:
+  // this is a standard constructor
+  JetPerformanceIvan() { }
+  JetPerformanceIvan(const char* name);
+  virtual ~JetPerformanceIvan();
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+  virtual EL::StatusCode initialize();
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(JetPerformanceIvan, 1);
+};
+
+#endif // HgammaSandbox_JetPerformanceIvan_H

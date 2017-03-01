@@ -1,0 +1,74 @@
+void TruthMacro (const std::string& submitDir)
+{
+  // Load the libraries for all packages
+  gROOT->Macro("$ROOTCOREDIR/scripts/load_packages.C");
+
+  // Set up the job for xAOD access:
+  xAOD::Init().ignore();
+
+  // create a new sample handler to describe the data files we use
+  SH::SampleHandler sh;
+
+/*
+  const char* inputFilePath = gSystem->ExpandPathName ("~/eos/atlas/atlasgroupdisk/phys-higgs/HSG1/xAOD/");
+  SH::DiskListLocal list (inputFilePath);
+  SH::scanDir (sh, list, "DAOD_HIGG1D1_FullMCSkim.output.pool.root"); // specifying one particular file for testing
+*/
+/*
+  const char* inputFilePath = gSystem->ExpandPathName ("~/eos/atlas/atlasgroupdisk/phys-higgs/HSG1/xAOD/");
+  SH::DiskListLocal list (inputFilePath);
+  SH::scanDir (sh, list, "AOD.01512139._000010.pool.root.1"); // specifying one particular file for testing
+*/
+/*
+  const char* inputFilePath = gSystem->ExpandPathName ("/afs/cern.ch/work/s/stmenary/private/PhD/1st_Year/Hgamma/HIGG1D1/WorkArea/run/xAODs/");
+  SH::DiskListLocal list (inputFilePath);
+  SH::scanDir (sh, list, "AOD.01512139._000010.pool.root.1"); // specifying one particular file for testing
+*/
+
+  //const char* inputFilePath = gSystem->ExpandPathName ("/afs/cern.ch/work/s/stmenary/private/PhD/1st_Year/Hgamma/HIGG1D1/WorkArea/run/DxAODs/test_mc8TeV_OutOfBoxIso");
+  //const char* inputFilePath = gSystem->ExpandPathName ("/afs/cern.ch/work/s/stmenary/private/PhD/1st_Year/Hgamma/HIGG1D1/WorkArea/run/DxAODs/test_mc8TeV_NoMuNoNuIso");
+  //SH::DiskListLocal list (inputFilePath);
+  //SH::scanDir (sh, list, "DAOD_HIGG1D1.remove_me.pool.root.1"); // specifying one particular file for testing
+  //SH::scanDir (sh, list, "DAOD_HIGG1D1.DC14_mc8TeV_xAOD_OutOfBoxIso_500Events_SetIso17.pool.root"); // specifying one particular file for testing
+  //SH::scanDir (sh, list, "DAOD_HIGG1D1.DC14_mc8TeV_xAOD_NoMuNoNu_500Events.pool.root"); // specifying one particular file for testing
+
+  //const char* inputFilePath = gSystem->ExpandPathName ("/afs/cern.ch/work/s/stmenary/private/PhD/1st_Year/Hgamma/HIGG1D1/WorkArea/run/DQ2Files");
+  //SH::DiskListLocal list (inputFilePath);
+  //SH::scanDir (sh, list, "AOD.04606778._00001*.pool.root.1"); // specifying one particular file for testing
+  //SH::scanDir (sh, list, "AOD.04606778._000002.pool.root.1"); // specifying one particular file for testing
+  //SH::scanDir (sh, list, "*.pool.root.1"); // specifying one particular file for testing
+
+  const char* inputFilePath = gSystem->ExpandPathName ("/afs/cern.ch/work/s/stmenary/private/PhD/1st_Year/Hgamma/HIGG1D1/WorkArea/run/DxAODs");
+  SH::DiskListLocal list (inputFilePath);
+  //SH::scanDir (sh, list, "DAOD_HIGG1D1.test_2_2_10.53.pool.root"); // specifying one particular file for testing
+  //SH::scanDir (sh, list, "DAOD_HIGG1D1.test_2_2_12.05.pool.root"); // specifying one particular file for testing
+  SH::scanDir (sh, list, "DAOD_HIGG1D1.test_2_2_12.24.pool.root"); // specifying one particular file for testing
+
+  // set the name of the tree in our files
+  sh.setMetaString ("nc_tree", "CollectionTree");
+
+  // further sample handler configuration may go here
+
+  // print out the samples we found
+  sh.print ();
+
+  // this is the basic description of our job
+  EL::Job job;
+  job.sampleHandler (sh);
+
+  // add our algorithm to the job
+  HgammaTruthAnalysis *alg = new HgammaTruthAnalysis;
+
+  // later on we'll add some configuration options for our algorithm that go here
+
+  job.algsAdd (alg);
+
+  // make the driver we want to use:
+  // this one works by running the algorithm directly:
+  EL::DirectDriver driver;
+  // we can use other drivers to run things on the Grid, with PROOF, etc.
+
+  // process the job using the driver
+  driver.submit (job, submitDir);
+
+}

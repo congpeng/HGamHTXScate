@@ -1,0 +1,343 @@
+#include "HgammaSandbox/ETmissExample.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+// MET EDM
+#include "xAODMissingET/MissingET.h"
+#include "xAODMissingET/MissingETContainer.h"
+
+// Truth Particle
+#include "xAODTruth/TruthParticleContainer.h"
+#include "xAODTruth/TruthParticleAuxContainer.h"
+
+using namespace std;
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(ETmissExample)
+
+
+
+ETmissExample::ETmissExample(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+
+  m_eventCounter = 0;
+
+}
+
+
+
+ETmissExample::~ETmissExample()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+//The following initialize() is for testing the association utils package. No need for using the Overlap Removal Handler 
+EL::StatusCode ETmissExample::initialize()
+{
+  HgammaAnalysis::initialize();
+  m_eTmissHandlerLM = new HG::ETmissHandlerLM("eTmissHandlerLM");
+  m_eTmissHandlerLM->initialize(*config(), event());
+  
+  return EL::StatusCode::SUCCESS;
+}
+
+
+EL::StatusCode ETmissExample::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+
+  //histoStore()->createTH1F("m_yy", 60, 110, 140);
+
+  // Truth MET (with Truth particles)
+  histoStore()->createTH1F("met_truth_particles", 40, 0, 200,";truth #it{E}_{T}^{miss} [GeV]");
+
+  // MET definitions: Etmiss
+  histoStore()->createTH1F("MET_RefFinal_CST",200,0.,1000.,";#it{E}_{T}^{misss,CST} [GeV]");
+  histoStore()->createTH1F("MET_RefFinal_TST",200,0.,1000.,";#it{E}_{T}^{misss,TST1} [GeV]");
+  histoStore()->createTH1F("MET_Truth",200,0.,1000.,";#it{E}_{T}^{misss,Truth} [GeV]");
+  // MET definitions: Exmiss (Etmiss x-comp)
+  histoStore()->createTH1F("MET_RefFinal_CST_x",100,-100.,100.,";#it{E}_{x}^{misss,CST} [GeV]");
+  histoStore()->createTH1F("MET_RefFinal_TST_x",100,-100.,100.,";#it{E}_{x}^{misss,TST1} [GeV]");
+  histoStore()->createTH1F("MET_Truth_x",100,-100.,100.,";#it{E}_{x}^{misss,Truth} [GeV]");
+  // MET definitions: Eymiss (Etmiss y-comp)
+  histoStore()->createTH1F("MET_RefFinal_CST_y",100,-100.,100.,";#it{E}_{y}^{misss,CST} [GeV]");
+  histoStore()->createTH1F("MET_RefFinal_TST_y",100,-100.,100.,";#it{E}_{y}^{misss,TST1} [GeV]");
+  histoStore()->createTH1F("MET_Truth_y",100,-100.,100.,";#it{E}_{y}^{misss,Truth} [GeV]");
+  // MET definitions: Sum Etmiss
+  histoStore()->createTH1F("MET_RefFinal_CST_sum",200,0.,1000.,";#it #sum {E}_{T}^{misss,CST} [GeV]");
+  histoStore()->createTH1F("MET_RefFinal_TST_sum",200,0.,1000.,";#it #sum {E}_{T}^{misss,TST1} [GeV]");
+  histoStore()->createTH1F("MET_Truth_sum",200,0.,1000.,";#it #sum {E}_{T}^{misss,Truth} [GeV]");
+
+  // MET definitions: ETmissHandler => getRaw & METRebuilder
+  histoStore()->createTH1F("MET_getRaw",200,0.,1000.,";#it{E}_{T}^{misss,CST} [GeV]");
+  histoStore()->createTH1F("MET_Rebuilder",200,0.,1000.,";#it{E}_{T}^{misss,TST1} [GeV]");
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode ETmissExample::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+
+  HgammaAnalysis::execute();
+
+  //xAOD::PhotonContainer photons = photonHandler()->getCorrectedContainer();
+  //if (photons.size() < 2) return EL::StatusCode::SUCCESS;
+  //TLorentzVector h = photons[0]->p4() + photons[1]->p4();
+  //histoStore()->fillTH1F("m_yy", h.M()/HG::GeV);
+
+  m_eventCounter++;  
+
+  //////////////////////////////
+  // Using ETmissHandlerLM
+
+  //retreive all objects
+  xAOD::PhotonContainer photons_all = photonHandler()->getCorrectedContainer();
+  xAOD::JetContainer jets_all = jetHandler()->getCorrectedContainer();
+  xAOD::MuonContainer muons_all = muonHandler()->getCorrectedContainer();
+  xAOD::ElectronContainer electrons_all = electronHandler()->getCorrectedContainer();
+
+  //select sub-sets of objects passing selection
+  /*
+  xAOD::PhotonContainer photons= photonHandler()->applySelection(allphotons);
+  xAOD::JetContainer jets= jetHandler()->applySelection(alljets);
+  xAOD::MuonContainer muons= muonHandler()->applySelection(allmuons);
+  xAOD::ElectronContainer elecs= electronHandler()->applySelection(allelecs);
+  */
+  
+  xAOD::MissingET met_raw= eTmissHandlerLM()->rawETmiss();
+  //if( m_eventCounter < 11 ) Info("execute()", "  rawETmiss = %.2f GeV", met_raw.met()*0.001);
+  histoStore()->fillTH1F("MET_getRaw",met_raw.met()*0.001);
+
+  xAOD::MissingET met_test= eTmissHandlerLM()->ETmissRebuilder(photons_all,jets_all,electrons_all,muons_all);
+  //if( m_eventCounter < 11 ) Info("execute()", "  ETmissRebuilder = %.2f GeV", met_test.met()*0.001);
+
+  //////////////////////////////
+
+
+  //////////////////////////////////////////////////////////////////////
+  // Retrieve ETmiss containers and ETmiss values
+
+  // ETmiss Truth container
+  const xAOD::MissingETContainer* met_container_Truth = 0;
+  if ( event()->retrieve( met_container_Truth, "MET_Truth" ).isFailure() ){
+    Error("execute()", "Failed to retrieve MET_Truth container. Exiting." );
+    return EL::StatusCode::FAILURE;
+  }
+  
+  // MET_Truth: ETmiss Truth computation
+  //const xAOD::MissingET* met_Truth = (*met_container_Truth)["NonInt"];
+  const xAOD::MissingET* met_Truth = (*met_container_Truth)["Int"];
+  if (!met_Truth) {
+    //Error("execute()", "Couldn't find MET_Truth NonInt. Exiting." );
+    Error("execute()", "Couldn't find MET_Truth Int. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  // ETmiss MET_RefFinal container
+  const xAOD::MissingETContainer* met_container_RefFinal = 0;
+  if ( event()->retrieve(met_container_RefFinal, "MET_RefFinal" ).isFailure() ){ // For xAODs
+  //if ( event()->retrieve(met_container_RefFinal, "MET_RefFinalFix" ).isFailure() ){ // For DxAODs
+    Error("execute()", "Failed to retrieve MET_RefFinal container. Exiting." );
+    return EL::StatusCode::FAILURE;
+  }
+  
+  // ETmiss MET_RefFinal: Final computation
+  const xAOD::MissingET* met_RefFinal_CST = (*met_container_RefFinal)["Final"];
+  if (!met_RefFinal_CST) {
+    Error("execute()", "Couldn't find MET_RefFinal Final (CST). Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  // ETmiss MET_RefFinal: RefEle computation
+  const xAOD::MissingET* met_RefFinal_RefEle = (*met_container_RefFinal)["RefEle"];
+  if (!met_RefFinal_RefEle) {
+    Error("execute()", "Couldn't find MET_RefFinal RefEle. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  // ETmiss MET_RefFinal: RefGamma computation
+  const xAOD::MissingET* met_RefFinal_RefGamma = (*met_container_RefFinal)["RefGamma"];
+  if (!met_RefFinal_RefGamma) {
+    Error("execute()", "Couldn't find MET_RefFinal RefGamma. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+
+  // ETmiss MET_RefFinal: RefTau computation
+  const xAOD::MissingET* met_RefFinal_RefTau = (*met_container_RefFinal)["RefTau"];
+  if (!met_RefFinal_RefTau) {
+    Error("execute()", "Couldn't find MET_RefFinal RefTau. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  // ETmiss MET_RefFinal: RefJet computation
+  const xAOD::MissingET* met_RefFinal_RefJet = (*met_container_RefFinal)["RefJet"];
+  if (!met_RefFinal_RefJet) {
+    Error("execute()", "Couldn't find MET_RefFinal RefJet. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  // ETmiss MET_RefFinal: Muons computation
+  const xAOD::MissingET* met_RefFinal_Muons = (*met_container_RefFinal)["Muons"];
+  if (!met_RefFinal_Muons) {
+    Error("execute()", "Couldn't find MET_RefFinal Muons. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  // ETmiss MET_RefFinal: SoftClus computation (Cluster-based Soft Term = CST)
+  const xAOD::MissingET* met_RefFinal_SoftClus = (*met_container_RefFinal)["SoftClus"];
+  if (!met_RefFinal_SoftClus) {
+    Error("execute()", "Couldn't find MET_RefFinal SoftClus. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  // ETmiss MET_RefFinal: RefJet_JVFCut computation
+  const xAOD::MissingET* met_RefFinal_RefJet_JVFCut = (*met_container_RefFinal)["RefJet_JVFCut"];
+  if (!met_RefFinal_RefJet_JVFCut) {
+    Error("execute()", "Couldn't find MET_RefFinal RefJet_JVFCut. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  // ETmiss MET_RefFinal: PVSoftTrk computation (Track-based Soft Term = TST)
+  const xAOD::MissingET* met_RefFinal_PVSoftTrk = (*met_container_RefFinal)["PVSoftTrk"];
+  if (!met_RefFinal_PVSoftTrk) {
+    Error("execute()", "Couldn't find MET_RefFinal PVSoftTrk. Exiting." );
+    return EL::StatusCode::SUCCESS;
+  }
+  
+  
+  MET_RefFinal_CST_Ex=0.;MET_RefFinal_CST_Ey=0.;MET_RefFinal_CST=0.;
+  MET_RefFinal_TST_Ex=0.;MET_RefFinal_TST_Ey=0.;MET_RefFinal_TST=0.;MET_RefFinal_TST_sum=0.;
+
+  ////////////////////////////////////////////
+  // Compute Truth ETmiss from truth particles
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticle" ).isFailure() ) {
+    Error("execute()", "Failed to retrieve TruthParticle container." );
+    return EL::StatusCode::FAILURE;
+  }
+
+  xAOD::TruthParticleContainer::const_iterator truth_itr2 = truthPtcls->begin();
+  xAOD::TruthParticleContainer::const_iterator truth_end2 = truthPtcls->end();
+  
+  TLorentzVector missingFourVector;
+  
+  for( ; truth_itr2 != truth_end2; ++truth_itr2) {
+    
+    if( (*truth_itr2)->barcode() < 200000 && (*truth_itr2)->status() == 1 )
+      {
+        if( abs((*truth_itr2)->pdgId()) == 12 || abs((*truth_itr2)->pdgId()) == 14 || abs((*truth_itr2)->pdgId()) == 16)
+          {
+            missingFourVector += (*truth_itr2)->p4();
+          }      
+      }
+  }
+  
+  double m_MET = missingFourVector.Pt();
+  
+  
+  histoStore()->fillTH1F("met_truth_particles",m_MET*0.001);
+  ////////////////////////////////////////////
+
+
+  // MET_RefFinal_CST computaion by hand
+  MET_RefFinal_CST_Ex = met_RefFinal_RefEle->mpx()+met_RefFinal_RefGamma->mpx()+met_RefFinal_RefTau->mpx()+
+    met_RefFinal_Muons->mpx()+met_RefFinal_RefJet->mpx()+met_RefFinal_SoftClus->mpx();
+  MET_RefFinal_CST_Ey = met_RefFinal_RefEle->mpy()+met_RefFinal_RefGamma->mpy()+met_RefFinal_RefTau->mpy()+
+    met_RefFinal_Muons->mpy()+met_RefFinal_RefJet->mpy()+met_RefFinal_SoftClus->mpy();
+  MET_RefFinal_CST = TMath::Sqrt(MET_RefFinal_CST_Ex*MET_RefFinal_CST_Ex+MET_RefFinal_CST_Ey*MET_RefFinal_CST_Ey)*0.001;
+  
+  // TST Computation by hand
+  MET_RefFinal_TST_Ex = met_RefFinal_RefEle->mpx()+met_RefFinal_RefGamma->mpx()+met_RefFinal_RefTau->mpx()+
+    met_RefFinal_Muons->mpx()+met_RefFinal_RefJet_JVFCut->mpx()+met_RefFinal_PVSoftTrk->mpx();
+  MET_RefFinal_TST_Ey = met_RefFinal_RefEle->mpy()+met_RefFinal_RefGamma->mpy()+met_RefFinal_RefTau->mpy()+
+    met_RefFinal_Muons->mpy()+met_RefFinal_RefJet_JVFCut->mpy()+met_RefFinal_PVSoftTrk->mpy();
+  MET_RefFinal_TST = TMath::Sqrt(MET_RefFinal_TST_Ex*MET_RefFinal_TST_Ex+MET_RefFinal_TST_Ey*MET_RefFinal_TST_Ey)*0.001;
+  // TST Sum Et
+  MET_RefFinal_TST_sum = (met_RefFinal_RefEle->sumet()+met_RefFinal_RefGamma->sumet()+met_RefFinal_RefTau->sumet()+
+                          met_RefFinal_Muons->sumet()+met_RefFinal_RefJet_JVFCut->sumet()+met_RefFinal_PVSoftTrk->sumet())*0.001;
+    //////////////////////////////////////////////////////////////////////
+
+  // ETmiss Histos
+  histoStore()->fillTH1F("MET_RefFinal_CST",met_RefFinal_CST->met()*0.001);
+  histoStore()->fillTH1F("MET_RefFinal_TST",MET_RefFinal_TST);
+  histoStore()->fillTH1F("MET_Truth",met_Truth->met()*0.001);
+  // ETmiss Histos: Exmiss
+  histoStore()->fillTH1F("MET_RefFinal_CST_x",met_RefFinal_CST->mpx()*0.001);
+  histoStore()->fillTH1F("MET_RefFinal_TST_x",MET_RefFinal_TST_Ex*0.001);
+  histoStore()->fillTH1F("MET_Truth_x",met_Truth->mpx()*0.001);
+  // ETmiss Histos: Exmiss
+  histoStore()->fillTH1F("MET_RefFinal_CST_y",met_RefFinal_CST->mpy()*0.001);
+  histoStore()->fillTH1F("MET_RefFinal_TST_y",MET_RefFinal_TST_Ey*0.001);
+  histoStore()->fillTH1F("MET_Truth_y",met_Truth->mpy()*0.001);
+  // ETmiss Histos: Sum Et
+  histoStore()->fillTH1F("MET_RefFinal_CST_sum",met_RefFinal_CST->sumet()*0.001);
+  histoStore()->fillTH1F("MET_RefFinal_TST_sum",MET_RefFinal_TST_sum);
+  histoStore()->fillTH1F("MET_Truth_sum",met_Truth->sumet()*0.001);
+
+
+  if( m_eventCounter < 11 ) {
+    if ( m_eventCounter==1 ) Info("execute()", " ");
+    Info("execute()", "  Event number = %i", m_eventCounter );
+    Info("execute()", "  ####################################################  " );
+    Info("execute()", "  ### ETmissHandler output  " );
+    Info("execute()", "  ####################################################  " );
+    Info("execute()", "  rawETmiss(CST)        = %.2f GeV", met_raw.met()*0.001);
+    Info("execute()", "  ETmissRebuilder (TST) = %.2f GeV", met_test.met()*0.001);
+    Info("execute()", "  ####################################################  " );
+    Info("execute()", "  ### ETmissExample output  " );
+    Info("execute()", "  ####################################################  " );
+    Info("execute()", "  MET Truth (Int)                = %.2f GeV", (met_Truth->met()*0.001));
+    Info("execute()", "  MET Truth (truth part, NonInt) = %.2f GeV", (m_MET*0.001));
+    Info("execute()", "  MET RefFinal Final (CST) = %.2f GeV", (met_RefFinal_CST->met()*0.001));
+    Info("execute()", "  MET RefFinal Final (CST) (by hand)   = %.2f GeV", (MET_RefFinal_CST));
+    Info("execute()", "  MET RefFinal Final (TST) (by hand)   = %.2f GeV", (MET_RefFinal_TST));
+    Info("execute()", "    MET RefFinal RefEle        = %.2f GeV", (met_RefFinal_RefEle->met()*0.001));
+    Info("execute()", "      MET RefFinal RefEle x-comp        = %.2f GeV", (met_RefFinal_RefEle->mpx()*0.001));
+    Info("execute()", "      MET RefFinal RefEle y-comp        = %.2f GeV", (met_RefFinal_RefEle->mpy()*0.001));
+    Info("execute()", "    MET RefFinal RefGamma      = %.2f GeV", (met_RefFinal_RefGamma->met()*0.001));
+    Info("execute()", "      MET RefFinal RefGamma x-comp      = %.2f GeV", (met_RefFinal_RefGamma->mpx()*0.001));
+    Info("execute()", "      MET RefFinal RefGamma y-comp      = %.2f GeV", (met_RefFinal_RefGamma->mpy()*0.001));
+    Info("execute()", "    MET RefFinal RefTau        = %.2f GeV", (met_RefFinal_RefTau->met()*0.001));
+    Info("execute()", "      MET RefFinal RefTau x-comp        = %.2f GeV", (met_RefFinal_RefTau->mpx()*0.001));
+    Info("execute()", "      MET RefFinal RefTau y-comp        = %.2f GeV", (met_RefFinal_RefTau->mpy()*0.001));
+    Info("execute()", "    MET RefFinal RefJet        = %.2f GeV", (met_RefFinal_RefJet->met()*0.001));
+    Info("execute()", "      MET RefFinal RefJet x-comp        = %.2f GeV", (met_RefFinal_RefJet->mpx()*0.001));
+    Info("execute()", "      MET RefFinal RefJet y-comp        = %.2f GeV", (met_RefFinal_RefJet->mpy()*0.001));
+    Info("execute()", "    MET RefFinal RefJet_JVFCut = %.2f GeV", (met_RefFinal_RefJet_JVFCut->met()*0.001));
+    Info("execute()", "      MET RefFinal RefJet_JVFCut x-comp = %.2f GeV", (met_RefFinal_RefJet_JVFCut->mpx()*0.001));
+    Info("execute()", "      MET RefFinal RefJet_JVFCut y-comp = %.2f GeV", (met_RefFinal_RefJet_JVFCut->mpy()*0.001));
+    Info("execute()", "    MET RefFinal Muons         = %.2f GeV", (met_RefFinal_Muons->met()*0.001));
+    Info("execute()", "      MET RefFinal RefMuons x-comp      = %.2f GeV", (met_RefFinal_Muons->mpx()*0.001));
+    Info("execute()", "      MET RefFinal RefMuons y-comp      = %.2f GeV", (met_RefFinal_Muons->mpy()*0.001));
+    Info("execute()", "    MET RefFinal SoftClus      = %.2f GeV", (met_RefFinal_SoftClus->met()*0.001));
+    Info("execute()", "      MET RefFinal SoftClus x-comp      = %.2f GeV", (met_RefFinal_SoftClus->mpx()*0.001));
+    Info("execute()", "      MET RefFinal SoftClus y-comp      = %.2f GeV", (met_RefFinal_SoftClus->mpy()*0.001));
+    Info("execute()", "    MET RefFinal PVSoftTrk     = %.2f GeV", (met_RefFinal_PVSoftTrk->met()*0.001));
+    Info("execute()", "      MET RefFinal PVSoftTrk x-comp      = %.2f GeV", (met_RefFinal_PVSoftTrk->mpx()*0.001));
+    Info("execute()", "      MET RefFinal PVSoftTrk y-comp      = %.2f GeV", (met_RefFinal_PVSoftTrk->mpy()*0.001));
+    Info("execute()", " ");
+  }
+
+
+  return EL::StatusCode::SUCCESS;
+}

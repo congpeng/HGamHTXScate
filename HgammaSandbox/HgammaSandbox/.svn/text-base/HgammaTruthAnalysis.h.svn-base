@@ -1,0 +1,157 @@
+#ifndef MyAnalysis_HgammaTruthAnalysis_H
+#define MyAnalysis_HgammaTruthAnalysis_H
+
+// C++ includes
+#include <string>
+#include <map>
+
+#include <EventLoop/Algorithm.h>
+#include <TH1.h>
+
+// Infrastructure include(s):
+#include "xAODRootAccess/Init.h"
+#include "xAODRootAccess/TEvent.h"
+
+
+class HgammaTruthAnalysis : public EL::Algorithm
+{
+
+public:
+
+  // constants
+  double m_minPhotonPt;
+  double m_maxPhotonEta;
+  double m_maxPhotonIso;
+
+  double m_minElectronPt;
+  double m_maxElectronEta;
+
+  double m_minMuonPt;
+  double m_maxMuonEta;
+
+  double m_minJetPt;
+  double m_maxJetEta;
+
+
+  // event variables
+  xAOD::TEvent *m_event;  //!
+  double m_eventWeight;  //!
+  bool m_isMC; //!
+
+  // analysis variables
+  double m_MET; //!
+  int m_eventCounter; //!
+  int m_numTruthEvents; //!
+  int m_numRecoEvents; //!
+  int numPhotonsAllPS; //!
+  int numPhotonsFiducial; //!
+  int numParticlesAll; //!
+  int numParticlesStatus; //!
+  int numParticlesBarcode; //!
+  int numParticlesFS; //!
+  int numDalitz; //!
+  int numNonDalitzHiggs; //!
+
+  // event selections
+  bool m_rejectDalitzDecays; //!
+  bool m_useWZJets; //!
+  bool m_makeTruthObjects; //!
+  bool m_studyTruthIso; //!
+  bool m_studyConvertedPhotons; //!
+  bool m_studyDalitzDecays; //!
+
+
+  // ===== The following are variables relevant to plotting histograms. Make this nicer. =====
+  // histograms
+  std::map < std::string, TH1* > m_myHistograms;
+
+  // histogram selection
+  bool h_plotTruthPhotons; //!
+  bool h_plotTruthElectrons; //!
+  bool h_plotTruthMuons; //!
+  bool h_plotTruthJets; //!
+  bool h_plotTruthDiphotonSystem; //!
+  bool h_plotTruthMET; //!
+  bool h_plotTruthPdgIds; //!
+  bool h_CoM_energy; //!
+
+  // histogram variables
+  int photon_pt_lower; //!
+  int photon_pt_higher; //!
+
+  double photon_phi_lower; //!
+  double photon_phi_higher; //!
+  double photon_eta_lower; //!
+  double photon_eta_higher; //!
+  double photon_rapidity_lower; //!
+  double photon_rapidity_higher; //!
+  double photon_R_lower; //!
+  double photon_R_higher; //!
+  double photon_num_lower; //!
+  double photon_num_higher; //!
+
+  // this is a standard constructor
+  HgammaTruthAnalysis ();
+
+  // these are the functions inherited from Algorithm
+  virtual EL::StatusCode setupJob (EL::Job& job);
+  virtual EL::StatusCode fileExecute ();
+  virtual EL::StatusCode histInitialize ();
+  virtual EL::StatusCode changeInput (bool firstFile);
+  virtual EL::StatusCode initialize ();
+  virtual EL::StatusCode execute ();
+  virtual EL::StatusCode postExecute ();
+  virtual EL::StatusCode finalize ();
+  virtual EL::StatusCode histFinalize ();
+
+  // these are custom algorithms
+  virtual void read_input_file();
+  virtual void read_input_values();
+
+  virtual bool CreateTruthParticleContainers();
+  virtual bool FourVectorCheck();
+  virtual bool PlotPdgIds();
+  virtual bool PlotKinematics();
+  virtual bool RemoveOverlap();
+  virtual bool RemoveElectrons();
+  virtual bool RemoveMuons();
+  virtual bool RemoveJets();
+  virtual bool isDalitz();
+  virtual bool isHiggs();
+
+  virtual bool MakeTruthParticles();
+  virtual bool MakePhotons();
+  virtual bool MakeElectrons();
+  virtual bool MakeMuons();
+  virtual bool MakeJets();
+  virtual bool MakeMET();
+  virtual bool MakeDiphotonSystem();
+  virtual bool MakeDiphotonSystemAllPhaseSpace();
+  virtual bool MakeDiphotonSystemFiducial();
+
+  virtual bool StudyEventTruthIso();
+  virtual bool StudyConvertedPhotons();
+  virtual bool StudyDalitzDecays();
+
+  virtual bool MakeDefaultHistogram ( std::string objectName , std::string typeName , int nBins , float lower , float upper );
+  virtual bool MakeSingleParticleKinematicHistograms ( std::string name );
+  virtual bool MakeMultipleParticleKinematicHistograms ( std::string name );
+  virtual bool MakeKinematicHistograms ( std::string name );
+  virtual bool MakeDiphotonHistograms  ( std::string name );
+  virtual bool MakeDressingHistograms ();
+  virtual bool MakeCoMEnergyHistograms ();
+  virtual bool MakePdgIdHistograms ();
+
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(HgammaTruthAnalysis, 1);
+};
+
+class testAlg : public HgammaTruthAnalysis
+{
+
+public:
+    virtual bool hasWorked();
+
+};
+#endif

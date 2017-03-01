@@ -1,0 +1,394 @@
+#include "HgammaSandbox/FakePhotonsDag.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "xAODEgamma/EgammaxAODHelpers.h"
+#include "xAODTruth/xAODTruthHelpers.h"
+#include "TruthUtils/PIDUtils.h"
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(FakePhotonsDag)
+
+FakePhotonsDag::FakePhotonsDag(const char *name)
+: HgammaAnalysis(name) {}
+
+
+
+FakePhotonsDag::~FakePhotonsDag()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+
+EL::StatusCode FakePhotonsDag::createOutput()
+{
+  //histoStore()->createTH1F("m_yy", 60, 110, 140);
+  
+  // one entry for eaach loose or tight reco photons
+  m_recoPhTree.createAndRegister("RecoPhotonTree",wk());
+  m_recoPhTree.createFBranches({"pT","eta","phi"});  // 4-vector of reco photon
+  m_recoPhTree.createFBranches({"caloIso40","trackIso20"});
+  m_recoPhTree.createIBranches({"origin","loose","tight","egamma_origin","iso_loose","iso_tight","iso_grad","NPV"});
+  m_recoPhTree.createFBranches({"origin_pT","origin_DR","origin_DRcorr"});
+  m_recoPhTree.createFBranches({"origin_z","origin_zSimple","origin_zJet","origin_ETiso20","origin_ETiso40"});
+  m_recoPhTree.createFBranches({"mu"});
+
+  m_truthPaTree.createAndRegister("TruthFilterTree",wk());
+  m_truthPaTree.createFBranches({"pT","eta","phi"}); // 4-vector of truth particle
+  m_truthPaTree.createFBranches({"z","zSimple","zJet","ETiso20","ETiso40"});
+  m_truthPaTree.createIBranches({"id","status","match_loose","match_tight","NPV"});
+  m_truthPaTree.createFBranches({"pT_recoPhoton","eta_recoPhoton","DR_recoPhoton"});
+  m_truthPaTree.createFBranches({"caloIso40_recoPhoton","trackIso20_recoPhoton"});
+  m_truthPaTree.createFBranches({"mu"});
+
+  m_truthJetsTree.createAndRegister("TruthJetsTree",wk());
+  m_truthJetsTree.createFBranches({"pT","eta","phi"}); // 4-vector of truth particle
+  m_truthJetsTree.createIBranches({"match_loose","match_tight","NPV"});
+  m_truthJetsTree.createFBranches({"pT_recoPhoton","eta_recoPhoton","phi_recoPhoton", "DR_recoPhoton"});
+  m_truthJetsTree.createFBranches({"mu"});
+
+  m_eventTree.createAndRegister("eventTree",wk());
+  m_eventTree.createIBranches({"NrecoPhoton20","NloosePhoton20","NtightPhoton20","Npi020","NLoose20_unmached","NTight20_unmached","NPV"});
+  m_eventTree.createFBranches({"mu"});
+
+  return EL::StatusCode::SUCCESS;
+}
+
+std::vector<double> FakePhotonsDag::getTruthIso(const xAOD::TruthParticle *ptcl, HG::TruthPtcls &stblPtcls) {
+  std::vector<double> isoETs;
+  
+  HG::TruthPtcls decay = HG::getStableDecayProducts(ptcl);
+  
+  TLorentzVector iso20(0,0,0,0), iso40(0,0,0,0);
+  // Calculate the truth isolation!!
+  for (auto p:stblPtcls) {
+    if (p->p4().Pt()<1e-3) continue;
+    double dr=ptcl->p4().DeltaR(p->p4());
+    if (dr>0.4) continue;
+    
+    // now, check if the particle p in question is part of the decay
+    bool partOfDecay=false, print=false;
+    for (auto d:decay) if (p==d) partOfDecay=true;
+    if (partOfDecay) {
+      if (ptcl->p4().DeltaR(p->p4())>0.1) print=true;
+      else continue;
+    }
+    if (0&&print) {
+      HG::printTruthPtcl(ptcl,"Origin");
+      for (auto d:decay)
+        HG::printTruthPtcl(d,Form("Decay ptcl DR(orign)=%.2f",
+                                  d->p4().DeltaR(ptcl->p4())));
+    }
+    iso40 += p->p4();
+    if (dr<0.2) iso20+=p->p4();
+  }
+  isoETs.push_back(iso40.Et()*HG::invGeV);
+  isoETs.push_back(iso20.Et()*HG::invGeV);
+  return isoETs;
+}
+
+
+EL::StatusCode FakePhotonsDag::execute()
+{
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+  // Retrieve EventInfo
+  const xAOD::EventInfo* eventInfo = 0;
+  if( ! event()->retrieve( eventInfo, "EventInfo").isSuccess() ){
+    Error("execute()", "Failed to retrieve event info collection. Exiting." );
+    return StatusCode::FAILURE;
+  }
+  float mu = eventInfo->averageInteractionsPerCrossing();
+  // Retrieve vertex container
+  const xAOD::VertexContainer* vertexContainer = 0;
+  if( ! event()->retrieve( vertexContainer, "PrimaryVertices").isSuccess() ){
+    Error("execute()", "Failed to retrieve primary vertex collection. Exiting." );
+    return StatusCode::FAILURE;
+  }
+  int NPV = vertexContainer->size();
+
+
+  //static TString s_truthEvtName = config()->getStr("TruthEvents.ContainerName","TruthEvent");
+  static TString s_truthPtclName = config()->getStr("TruthParticles.ContainerName","TruthParticle");
+  
+  //const xAOD::TruthEventContainer *truthEvts = 0;
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  //EL_CHECK( "execute", event()->retrieve(truthEvts,s_truthEvtName.Data())   );
+  EL_CHECK( "execute", event()->retrieve(truthPtcls,s_truthPtclName.Data()) );
+
+  const xAOD::JetContainer *truthJets = 0;
+  EL_CHECK( "execute", event()->retrieve(truthJets,"AntiKt4TruthJets") );
+  
+  if (HG::isDalitz(truthPtcls)) return EL::StatusCode::SUCCESS;
+  
+  // access MC event weight
+  //  if ( truthEvts->size() == 0 ) HG::fatal("TruthEvent vector has no elements");
+  //  double weightMC = truthEvts->at(0)->weights().front();
+
+  HG::TruthPtcls truthPhotons = HG::getGoodTruthPhotons(truthPtcls);
+  HG::TruthPtcls stblPtcls    = HG::getHadronsAndTheirDecay(truthPtcls);
+  
+  // retrieve the photons and apply the full selection
+  xAOD::PhotonContainer all_photons = photonHandler() -> getCorrectedContainer();
+
+  // photons, loose ID or tight
+  xAOD::PhotonContainer photons(SG::VIEW_ELEMENTS);
+  xAOD::PhotonContainer loosePhotons(SG::VIEW_ELEMENTS);
+  xAOD::PhotonContainer tightPhotons(SG::VIEW_ELEMENTS);
+  xAOD::PhotonContainer photons20(SG::VIEW_ELEMENTS);
+  xAOD::PhotonContainer loosePhotons20(SG::VIEW_ELEMENTS);
+  xAOD::PhotonContainer tightPhotons20(SG::VIEW_ELEMENTS);
+  for (xAOD::Photon *gam:all_photons) {
+    if (gam->pt() < 20.0*HG::GeV ) continue;
+    photons20.push_back(gam);
+    if (photonHandler()->passPIDCut(gam,egammaPID::IsEMLoose))
+      loosePhotons20.push_back(gam);
+    if (photonHandler()->passPIDCut(gam,egammaPID::IsEMTight))
+      tightPhotons20.push_back(gam);
+    if (!photonHandler()->passPtEtaCuts(gam)) continue;
+    photons.push_back(gam);
+    if (photonHandler()->passPIDCut(gam,egammaPID::IsEMLoose))
+      loosePhotons.push_back(gam);
+    if (photonHandler()->passPIDCut(gam,egammaPID::IsEMTight))
+      tightPhotons.push_back(gam);
+  }
+
+  // sanity check
+  if ( photons.size() && HG::minDR( photons[0], photons ) < 0.1 ) {
+    printf("MinDR(leading photon, all photons) = %.2f??\n",HG::minDR( photons[0], photons ));
+    for (auto gam:photons) photonHandler()->printPhoton(gam);
+  }
+  
+  for ( xAOD::Photon *gam : photons ) {
+    // Getting the particle in truth that cause that reco photon
+    double minDR = HG::minDR( gam, truthPhotons );
+    if (minDR<0.1) continue;
+    /***
+     *  We have a fake photon!
+     */
+    // Reset varialbes
+    m_recoPhTree.resetBranches();
+    // then fill them
+    m_recoPhTree.floats["pT"]  = gam->pt()*HG::invGeV;
+    m_recoPhTree.floats["eta"] = gam->eta();
+    m_recoPhTree.floats["phi"] = gam->phi();
+    m_recoPhTree.ints["loose"] = photonHandler()->passPIDCut(gam,egammaPID::IsEMLoose);
+    m_recoPhTree.ints["tight"] = photonHandler()->passPIDCut(gam,egammaPID::IsEMTight);
+    HG::Iso::IsolationType isoLoose = HG::Iso::Loose;
+    HG::Iso::IsolationType isoTight = HG::Iso::Tight;
+    HG::Iso::IsolationType isoGradient = HG::Iso::Gradient;
+    m_recoPhTree.ints["iso_loose"] = photonHandler()->passIsoCut(gam,isoLoose);
+    m_recoPhTree.ints["iso_tight"] = photonHandler()->passIsoCut(gam,isoTight);
+    m_recoPhTree.ints["iso_grad"] = photonHandler()->passIsoCut(gam,isoGradient);
+
+    //    m_recoPhTree.ints["iso_loose"] = photonHandler()->passIsoCut(gam,xAOD::IsoWorkingPoint::Loose);
+    //    m_recoPhTree.ints["iso_tight"] = photonHandler()->passIsoCut(gam,xAOD::IsoWorkingPoint::Tight);
+    //    m_recoPhTree.ints["iso_grad"] = photonHandler()->passIsoCut(gam,xAOD::IsoWorkingPoint::Gradient);
+    m_recoPhTree.floats["trackIso20"] = gam->isolationValue(xAOD::Iso::ptcone20)*HG::invGeV;
+    m_recoPhTree.floats["caloIso40"]  = gam->isolationValue(xAOD::Iso::topoetcone40)*HG::invGeV;
+
+    const xAOD::TruthParticle *egammaOrigin = xAOD::TruthHelpers::getTruthParticle(*gam);
+    const xAOD::TruthParticle *orig = egammaOrigin ? egammaOrigin->parent() : nullptr;
+    if (orig==nullptr) {
+      Info("execute","Fake-photon w no origin!");
+      m_fakeMap[-999]++;
+    }
+    else {
+      //Info("execute","Fake photon with origin = %d",orig->pdgId());
+      m_fakeMap[orig->pdgId()]++;
+      m_recoPhTree.ints["origin"]      = orig->pdgId();
+      m_recoPhTree.ints["egamma_origin"] = egammaOrigin->pdgId();
+      m_recoPhTree.floats["origin_DR"] = orig->p4().DeltaR(gam->p4());
+      m_recoPhTree.floats["origin_pT"] = orig->pt()*HG::invGeV;
+      // Eq 1 of: Eur.Phys.J.C 71 (2011) 1795
+      if (orig->parent()) {
+        const TLorentzVector &p=orig->parent()->p4(), &ph=orig->p4();
+        m_recoPhTree.floats["origin_z"] = (p.Px()*ph.Px()+p.Py()*ph.Py()+p.Pz()*ph.Pz())/p.P()/p.P();
+        m_recoPhTree.floats["origin_zSimple"] = ph.Pt()/p.Pt();
+      }
+      std::vector<double> isoET = getTruthIso(orig,stblPtcls);
+      if (isoET.size()!=2) HG::fatal("isoET.size()!=2 ???");
+      m_recoPhTree.floats["origin_ETiso40"] = isoET[0];//iso20.Et()*HG::invGeV;
+      m_recoPhTree.floats["origin_ETiso20"] = isoET[1];//iso40.Et()*HG::invGeV;
+    }
+    //    if (orig&&(orig->pdgId()==223||orig->pdgId()==113||abs(orig->pdgId())==311||orig->pdgId()==113||orig->pdgId()==221)) {
+    /*
+     // Debug messgaes to see rareish cases of decays resulting in fake photons
+     
+    if (orig&&(orig->pdgId()==223||orig->pdgId()==113||abs(orig->pdgId())==311||orig->pdgId()==113)) {
+      photonHandler()->printPhoton(gam);
+      if (orig) {
+        if (abs(orig->pdgId())==311)
+          HG::printTruthPtcl(orig,"origin",2,0);
+        else
+          HG::printTruthPtcl(orig,"origin",1,0);
+      }
+    }
+     */
+    m_recoPhTree.ints["NPV"] = NPV;
+    m_recoPhTree.floats["mu"] = mu;
+    m_recoPhTree.fill();
+  }
+  
+  /*****
+   * what fakes a photon??
+   * obviously pi0 -> yy
+   * also
+   *   221 = eta0 -> yy
+   *   311 -> 111 + 22  == K0 -> pi0+y -> yyy
+   *   223 -> 111 + 22  == omega0 -> pi0+y -> yyy
+   *   221 -> 3 x 111   == eta0 -> 3 pi0 -> 6y
+   *+/-311 -> 310 -> 2 x 111 = K0 -> KS -> 2 pi0 -> yyyy
+   */
+
+  //  code in development
+  // truth filter loop!
+  int NfakeCand=0;
+  std::vector<const xAOD::TruthParticle*> truthFakeCandidates;
+  for ( const xAOD::TruthParticle *ptcl : *truthPtcls ) {
+    if (ptcl->pt() < 20.0*HG::GeV ) continue;
+    if (fabs(ptcl->eta()) > 2.4 ) continue;
+    int pdgId=ptcl->pdgId();
+    //if (!(pdgId==111||pdgId==113||pdgId==221||pdgId==223||abs(pdgId)==311)) continue;
+    //    if (!(pdgId==111||pdgId==221)) continue;
+    if (!(pdgId==111)) continue;
+    ++NfakeCand;
+    truthFakeCandidates.push_back(ptcl);
+    m_truthPaTree.resetBranches();
+    m_truthPaTree.ints["id"] = ptcl->pdgId();
+    m_truthPaTree.ints["status"] = ptcl->status();
+    m_truthPaTree.floats["pT"] = ptcl->pt()*HG::invGeV;
+    m_truthPaTree.floats["eta"] = ptcl->eta();
+    m_truthPaTree.floats["phi"] = ptcl->phi();
+    if (ptcl->parent()) {
+      const TLorentzVector &p=ptcl->parent()->p4(), &ph=ptcl->p4();
+      m_truthPaTree.floats["z"] = (p.Px()*ph.Px()+p.Py()*ph.Py()+p.Pz()*ph.Pz())/p.P()/p.P();
+      m_truthPaTree.floats["zSimple"] = ph.Pt()/p.Pt();
+    }
+    for (auto tjet:*truthJets) {
+      if (tjet->p4().DeltaR(ptcl->p4())<0.3) {
+        m_truthPaTree.floats["zJet"] = ptcl->pt()/tjet->pt();
+        break;
+      }
+    }
+    std::vector<double> isoET = getTruthIso(ptcl,stblPtcls);
+    m_truthPaTree.floats["ETiso40"] = isoET[0];
+    m_truthPaTree.floats["ETiso20"] = isoET[1];
+    for (auto rgam:photons) {
+      if (rgam->p4().DeltaR(ptcl->p4())<0.1) {
+        m_truthPaTree.ints["match_loose"] = photonHandler()->passPIDCut(rgam,egammaPID::IsEMLoose);
+        m_truthPaTree.ints["match_tight"] = photonHandler()->passPIDCut(rgam,egammaPID::IsEMTight);
+        m_truthPaTree.floats["pT_recoPhoton"] = rgam->pt()*HG::invGeV;
+        m_truthPaTree.floats["eta_recoPhoton"] = rgam->eta();
+        m_truthPaTree.floats["DR_recoPhoton"] = rgam->p4().DeltaR(ptcl->p4());
+        m_truthPaTree.floats["caloIso40_recoPhoton"] = rgam->isolationValue(xAOD::Iso::topoetcone40)*HG::invGeV;
+        m_truthPaTree.floats["trackIso20_recoPhoton"] = rgam->isolationValue(xAOD::Iso::ptcone20)*HG::invGeV;
+        break;
+      }
+    }
+    m_truthPaTree.ints["NPV"] = NPV;
+    m_truthPaTree.floats["mu"] = mu;
+    m_truthPaTree.fill();
+  } // end of the truthparticle loop
+
+  // truth jet loop!
+  for (auto tjet:*truthJets) {
+    if (tjet->pt() < 20.0*HG::GeV ) continue;
+    if (fabs(tjet->eta()) > 2.4 ) continue;
+    m_truthJetsTree.resetBranches();
+    m_truthJetsTree.floats["pT"] = tjet->pt()*HG::invGeV;
+    m_truthJetsTree.floats["eta"] = tjet->eta();
+    m_truthJetsTree.floats["phi"] = tjet->phi();
+    for (auto rgam:photons) {
+      double minJDR = rgam->p4().DeltaR(tjet->p4());
+      if (minJDR>0.3) continue;
+      m_truthJetsTree.ints["match_loose"] = photonHandler()->passPIDCut(rgam,egammaPID::IsEMLoose);
+      m_truthJetsTree.ints["match_tight"] = photonHandler()->passPIDCut(rgam,egammaPID::IsEMTight);
+      m_truthJetsTree.floats["pT_recoPhoton"] = rgam->pt()*HG::invGeV;
+      m_truthJetsTree.floats["eta_recoPhoton"] = rgam->eta();
+      m_truthJetsTree.floats["phi_recoPhoton"] = rgam->phi();
+      m_truthJetsTree.floats["DR_recoPhoton"] = minJDR;
+      break;
+    } // end of reco photons loop
+    m_truthJetsTree.ints["NPV"] = NPV;
+    m_truthJetsTree.floats["mu"] = mu;
+    m_truthJetsTree.fill();
+  } // end of truthJets loop
+
+  // general tree 
+  m_eventTree.resetBranches();
+  m_eventTree.ints["NrecoPhoton20"] = photons20.size();
+  m_eventTree.ints["NloosePhoton20"] = loosePhotons20.size();
+  m_eventTree.ints["NtightPhoton20"] = tightPhotons20.size();
+  m_eventTree.ints["Npi020"] = NfakeCand;
+  int NfakeL20=0;
+  for (auto lph:loosePhotons20) {
+    double minDR = HG::minDR( lph, truthPhotons );
+    if (minDR<0.1) continue;
+    ++NfakeL20;
+  }
+  m_eventTree.ints["NLoose20_unmached"] = NfakeL20;
+  int NfakeT20=0;
+  for (auto tph:tightPhotons20) {
+    double minDR = HG::minDR( tph, truthPhotons );
+    if (minDR<0.1) continue;
+    ++NfakeT20;
+  }
+  m_eventTree.ints["NTight20_unmached"] = NfakeT20;
+  m_eventTree.ints["NPV"] = NPV;
+  m_eventTree.floats["mu"] = mu;
+  m_eventTree.fill();
+
+  /*
+  if (NfakeCand>6) {
+    Info("execute","%2d photon fake candidates",NfakeCand);
+    for (auto gam:photons) {
+      if ( HG::minDR( gam, truthPhotons ) < 0.1 ) continue;
+      photonHandler()->printPhoton(gam);
+      const xAOD::TruthParticle *egammaOrigin = xAOD::TruthHelpers::getTruthParticle(gam);
+      const xAOD::TruthParticle *orig = egammaOrigin ? egammaOrigin->parent() : nullptr;
+      if (orig) HG::printTruthPtcl(orig,"origin",1,0);
+    }
+    for ( const xAOD::TruthParticle *ptcl : truthFakeCandidates )
+      HG::printTruthPtcl(ptcl,Form("Fake candidate, status %d",ptcl->status()),1,0);
+  }
+   */
+  return EL::StatusCode::SUCCESS;
+}
+
+// Names of particles likely to fake photons (this is what I found in 5000 events in a ttH file)
+TString FakePhotonsDag::getPartName(int pdgId) {
+  // http://www.physics.ox.ac.uk/CDF/Mphys/old/notes/pythia_codeListing.html
+  if      (pdgId == 111) return "pi0";
+  else if (pdgId == 113) return "rho0";
+  else if (pdgId == 221) return "eta0";
+  else if (pdgId == 223) return "omega0";
+  else if (pdgId == 311) return "K0";
+  else if (pdgId ==-311) return "Kbar0";
+  else if (pdgId ==  24) return "W+";
+  else if (pdgId == -24) return "W-";
+  else if (pdgId ==  15) return "tau+";
+  else if (pdgId == -15) return "tau-";
+  else if (abs(pdgId) < 6) return "quark";
+  else if (pdgId == 421) return "D0";
+  else if (pdgId == 511) return "B0";
+  else if (pdgId ==-511) return "Bbar0";
+  else if (pdgId == 513) return "B*0";
+  else if (pdgId ==-513) return "B*bar0";
+  else if (pdgId == 531) return "B_s0";
+  else if (pdgId ==-531) return "B_sbar0";
+  else if (pdgId == 531) return "B*_s0";
+  else if (pdgId ==-531) return "B*_sbar0";
+  else if (pdgId == 551) return "eta_b";
+  else if (pdgId ==-999) return "unmatched";
+  else return "??";
+}
+
+EL::StatusCode FakePhotonsDag::finalize() {
+  printf("\nFake photon origin\n");
+  printf("%10s%10s%10s\n","PID","Mult.","Name");
+  for (auto elem:m_fakeMap)
+    printf("%10d%10d%10s\n",elem.first,elem.second,getPartName(elem.first).Data());
+  return EL::StatusCode::SUCCESS;
+}

@@ -1,0 +1,1170 @@
+//================================================================================================================
+// author: Stephen Menary
+// email: stephen.menary@postgrad.manchester.ac.uk
+//================================================================================================================
+
+
+// C++ includes:
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <map>
+#include <algorithm>
+#include <cmath>
+
+// Personal includes:
+
+#include "HgammaSandbox/MyAlgorithms.h"
+#include "HgammaSandbox/TruthAnalysisEDM.h"
+#include "HgammaSandbox/HgammaTruthAnalysis.h"
+//#include "HgammaSandbox/HgammaTruthHelper.h"
+
+// ROOT includes:
+#include <TH1.h>
+
+// Event Loop includes: (might be able to get rid of)
+#include <EventLoop/Job.h>
+#include <EventLoop/StatusCode.h>
+#include <EventLoop/Worker.h>
+#include "EventLoop/OutputStream.h"
+
+// EDM includes:
+#include "xAODEventInfo/EventInfo.h"
+
+// Photons
+#include "xAODEgamma/PhotonContainer.h"
+#include "xAODEgamma/PhotonAuxContainer.h"
+
+// Jets
+#include "xAODJet/JetContainer.h"
+#include "xAODJet/JetAuxContainer.h"
+
+// Truth
+#include "xAODTruth/TruthParticleContainer.h"
+#include "xAODTruth/TruthParticleAuxContainer.h"
+
+//Other
+#include <TSystem.h>
+#include "xAODRootAccess/TStore.h"
+#include "xAODCore/ShallowCopy.h"
+//#include "fastjet/ClusterSequence.hh"
+
+
+// ---------------------------------------------------------------------------------------------------------------
+//         Stores
+// ---------------------------------------------------------------------------------------------------------------
+
+
+
+bool HgammaTruthAnalysis :: CreateTruthParticleContainers ()
+{
+
+  TA::m_truthPhotons = new xAOD::TruthParticleContainer();
+  TA::m_truthAuxPhotons = new xAOD::TruthParticleAuxContainer();
+  TA::m_truthPhotons->setStore(TA::m_truthAuxPhotons);
+
+  TA::m_truthElectrons = new xAOD::TruthParticleContainer();
+  TA::m_truthAuxElectrons = new xAOD::TruthParticleAuxContainer();
+  TA::m_truthElectrons->setStore(TA::m_truthAuxElectrons);
+
+  TA::m_truthMuons = new xAOD::TruthParticleContainer();
+  TA::m_truthAuxMuons = new xAOD::TruthParticleAuxContainer();
+  TA::m_truthMuons->setStore(TA::m_truthAuxMuons);
+
+  TA::m_truthJets = new xAOD::JetContainer();
+  TA::m_truthAuxJets = new xAOD::JetAuxContainer();
+  TA::m_truthJets->setStore(TA::m_truthAuxJets);
+
+  TA::m_truthDiphotonSystem = new xAOD::TruthParticleContainer();
+  TA::m_truthAuxDiphotonSystem = new xAOD::TruthParticleAuxContainer();
+  TA::m_truthDiphotonSystem->setStore(TA::m_truthAuxDiphotonSystem);
+
+  TA::m_truthDiphotonSystemAllPS = new xAOD::TruthParticleContainer();
+  TA::m_truthAuxDiphotonSystemAllPS = new xAOD::TruthParticleAuxContainer();
+  TA::m_truthDiphotonSystemAllPS->setStore(TA::m_truthAuxDiphotonSystemAllPS);
+
+  return true;
+
+}
+
+
+
+// ---------------------------------------------------------------------------------------------------------------
+//         Particle definitions
+// ---------------------------------------------------------------------------------------------------------------
+
+
+
+bool HgammaTruthAnalysis :: MakeTruthParticles()
+{
+
+  if(!m_event->retrieve(TA::m_truthParticles, "TruthParticle" ).isSuccess()){
+    	Error("execute()", "Failed to retrieve TruthParticle container." );
+    	return EL::StatusCode::FAILURE;
+  }
+
+  if(!m_event->retrieve(TA::m_antiKt4TruthJets, "AntiKt4TruthJets" ).isSuccess()){
+    	Error("execute()", "Failed to retrieve AntiKt4TruthJets container." );
+    	return EL::StatusCode::FAILURE;
+  }
+
+  if(!m_event->retrieve(TA::m_antiKt4TruthWZJets, "AntiKt4TruthWZJets" ).isSuccess()){
+    	Error("execute()", "Failed to retrieve AntiKt4TruthWZJets container. Setting use WZ jets = false." );
+    	m_useWZJets = false;
+  }
+
+  // Reject Daltz events if desired
+
+  if( m_rejectDalitzDecays && isDalitz() ) return false;
+
+  // Do Sum Particle 4-Vector cross-check
+
+  if ( h_CoM_energy )
+  {
+      FourVectorCheck () ;
+  }
+
+  if ( h_plotTruthPdgIds )
+  {
+      PlotPdgIds () ;
+  }
+
+  // Create stores for selected particles
+
+  CreateTruthParticleContainers();
+
+  // Plot Kinematics of particles before selection applied
+  // PlotUnselectedParticles
+  //TA::PrintKinematics(TA::m_truthParticles, "Truth Particles", m_myHistograms, m_eventWeight);
+
+  // Apply particle selections and fill Truth Particle Containers with the resulting particles
+
+  MakePhotons();
+  MakeElectrons();
+  MakeMuons();
+  MakeJets();
+  RemoveOverlap();
+  MakeDiphotonSystem();
+  MakeMET();
+
+  return true;
+}
+
+
+
+bool HgammaTruthAnalysis :: MakePhotons ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator truth_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator truth_end(TA::m_truthParticles->end());
+
+  for( ; truth_itr != truth_end; ++truth_itr) {
+      if( (*truth_itr)->barcode() >= 200000 || (*truth_itr)->status() != 1 || (*truth_itr)->pdgId() != 22 || !TA::GoodTruthParticle(*truth_itr) )
+      {
+          continue;
+      }
+      numPhotonsAllPS++;
+      if ( (*truth_itr)->pt()*0.001 < m_minPhotonPt || fabs((*truth_itr)->eta()) > m_maxPhotonEta /* || PhotonIso(*truth_itr) > m_maxPhotonIso*/)
+      {
+          continue;
+      }
+      numPhotonsFiducial++;
+      xAOD::TruthParticle* photon = new xAOD::TruthParticle();
+      photon->makePrivateStore(**truth_itr);
+      TA::m_truthPhotons->push_back(photon);
+  }
+
+  // Not strictly complete until I can push PhotonIso back onto the particles
+  // Note: Truth Iso tool under development: Will augment particles, so calculation no longer needed here.
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeElectrons ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator truth_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator truth_end(TA::m_truthParticles->end());
+
+  for( ; truth_itr != truth_end; ++truth_itr) {
+
+      if( (*truth_itr)->barcode() < 200000 && (*truth_itr)->status() == 1 && abs((*truth_itr)->pdgId()) == 11 && TA::GoodTruthParticle(*truth_itr) )
+      {
+          TLorentzVector m_dressedLepton ( TA :: DressLepton(*truth_itr) );
+          if( h_plotTruthElectrons )
+          {
+              m_myHistograms["Electron dressing energy"]->Fill( (m_dressedLepton-(*truth_itr)->p4()).E() ,m_eventWeight);
+              m_myHistograms["Electron undressed mass"]->Fill( (*truth_itr)->p4().M() ,m_eventWeight);
+              m_myHistograms["Electron dressed mass"]->Fill( m_dressedLepton.M() ,m_eventWeight);
+          }
+          if( m_dressedLepton.Pt()*0.001 > m_minElectronPt && fabs(m_dressedLepton.Eta()) < m_maxElectronEta) // AND CRACK ?
+          {
+              xAOD::TruthParticle* electron = new xAOD::TruthParticle();
+              electron->makePrivateStore(**truth_itr);
+              electron->setE ( (*truth_itr)->e()  + m_dressedLepton.E()  );
+              electron->setPx( (*truth_itr)->px() + m_dressedLepton.Px() );
+              electron->setPy( (*truth_itr)->py() + m_dressedLepton.Py() );
+              electron->setPz( (*truth_itr)->pz() + m_dressedLepton.Pz() );
+              TA::m_truthElectrons->push_back(electron);
+          }
+	  }
+
+  }
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeMuons ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator truth_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator truth_end(TA::m_truthParticles->end());
+
+  for( ; truth_itr != truth_end; ++truth_itr) {
+
+      if( (*truth_itr)->barcode() < 200000 && (*truth_itr)->status() == 1 && abs((*truth_itr)->pdgId()) == 13 && TA::GoodTruthParticle(*truth_itr) )
+      {
+          TLorentzVector m_dressedLepton ( TA :: DressLepton(*truth_itr) );
+          if( h_plotTruthMuons )
+          {
+              m_myHistograms["Muon dressing energy"]->Fill( (m_dressedLepton-(*truth_itr)->p4()).E() ,m_eventWeight);
+              m_myHistograms["Muon undressed mass"]->Fill( (*truth_itr)->p4().M() ,m_eventWeight);
+              m_myHistograms["Muon dressed mass"]->Fill( m_dressedLepton.M() ,m_eventWeight);
+          }
+          if( m_dressedLepton.Pt()*0.001 > m_minMuonPt && fabs(m_dressedLepton.Eta()) < m_maxMuonEta) // AND CRACK ?
+          {
+              xAOD::TruthParticle* muon = new xAOD::TruthParticle();
+              muon->makePrivateStore(**truth_itr);
+              muon->setE ( (*truth_itr)->e()  + m_dressedLepton.E()  );
+              muon->setPx( (*truth_itr)->px() + m_dressedLepton.Px() );
+              muon->setPy( (*truth_itr)->py() + m_dressedLepton.Py() );
+              muon->setPz( (*truth_itr)->pz() + m_dressedLepton.Pz() );
+              TA::m_truthMuons->push_back(muon);
+          }
+	  }
+
+  }
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeJets ()
+{
+
+  const xAOD::JetContainer* m_globalJetContainer;
+  m_globalJetContainer = ( m_useWZJets ? TA::m_antiKt4TruthWZJets : TA::m_antiKt4TruthJets );
+
+  xAOD::JetContainer::const_iterator jet_itr(m_globalJetContainer->begin());
+  xAOD::JetContainer::const_iterator jet_end(m_globalJetContainer->end());
+
+  for( ; jet_itr != jet_end; ++jet_itr) {
+
+      if ( (*jet_itr)->pt()*.001 < m_minJetPt ) continue;
+      if ( fabs((*jet_itr)->eta()) > m_maxJetEta ) continue;
+
+      xAOD::Jet* jet = new xAOD::Jet();
+      jet->makePrivateStore(**jet_itr);
+      TA::m_truthJets->push_back(jet);
+
+  }
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeDiphotonSystem ()
+{
+
+  // Placeholder
+
+  MakeDiphotonSystemAllPhaseSpace();
+  MakeDiphotonSystemFiducial();
+
+  // Find leading and subleading photons
+  // Add them to container
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeDiphotonSystemAllPhaseSpace ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator pho_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator pho_end(TA::m_truthParticles->end());
+
+  xAOD::TruthParticleContainer::const_iterator pho_leading(pho_itr);
+  xAOD::TruthParticleContainer::const_iterator pho_subleading(pho_itr);
+
+  bool isFirstPhoton(true);
+
+  for( ; pho_itr != pho_end; ++pho_itr) {
+
+      if( (*pho_itr)->barcode() > 200000 || (*pho_itr)->status() != 1 || abs((*pho_itr)->pdgId()) != 22 || !TA::GoodTruthParticle(*pho_itr) )
+      {
+          continue;
+      }
+
+      if( isFirstPhoton )
+      {
+          pho_leading = pho_itr;
+          pho_subleading = pho_itr;
+          isFirstPhoton = false;
+          continue;
+      }
+    
+      if ( (*pho_itr)->pt() > (*pho_leading)->pt() )
+      {
+          pho_subleading = pho_leading;
+          pho_leading = pho_itr;
+      }
+      else if ( (*pho_itr)->pt() > (*pho_subleading)->pt() )
+      {
+          pho_subleading = pho_itr;
+      }
+
+  }
+
+  if ( pho_leading != pho_subleading )
+  {
+      xAOD::TruthParticle* leadingPhoton = new xAOD::TruthParticle();
+      xAOD::TruthParticle* subleadingPhoton = new xAOD::TruthParticle();
+      leadingPhoton->makePrivateStore(**pho_leading);
+      subleadingPhoton->makePrivateStore(**pho_subleading);
+      TA::m_truthDiphotonSystemAllPS->push_back(leadingPhoton);
+      TA::m_truthDiphotonSystemAllPS->push_back(subleadingPhoton);
+  }
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeDiphotonSystemFiducial ()
+{
+  // Could we have a function which finds the two leading photons in an arbitrarily defined phase space?
+  // At least need some common function, far too much copied code here
+  //
+  // Yes! Use function pointers
+
+  xAOD::TruthParticleContainer::const_iterator pho_itr(TA::m_truthPhotons->begin());
+  xAOD::TruthParticleContainer::const_iterator pho_end(TA::m_truthPhotons->end());
+
+  xAOD::TruthParticleContainer::const_iterator pho_leading(pho_itr);
+  xAOD::TruthParticleContainer::const_iterator pho_subleading(pho_itr);
+
+  for( ; pho_itr != pho_end; ++pho_itr) {
+    
+      if ( (*pho_itr)->pt() > (*pho_leading)->pt() )
+      {
+          pho_subleading = pho_leading;
+          pho_leading = pho_itr;
+      }
+      else if ( (*pho_itr)->pt() > (*pho_subleading)->pt() )
+      {
+          pho_subleading = pho_itr;
+      }
+
+  }
+
+  if ( pho_leading != pho_subleading )
+  {
+      xAOD::TruthParticle* leadingPhoton = new xAOD::TruthParticle();
+      xAOD::TruthParticle* subleadingPhoton = new xAOD::TruthParticle();
+      leadingPhoton->makePrivateStore(**pho_leading);
+      subleadingPhoton->makePrivateStore(**pho_subleading);
+      TA::m_truthDiphotonSystem->push_back(leadingPhoton);
+      TA::m_truthDiphotonSystem->push_back(subleadingPhoton);
+  }
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeMET ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator truth_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator truth_end(TA::m_truthParticles->end());
+
+  TLorentzVector missingFourVector;
+
+  for( ; truth_itr != truth_end; ++truth_itr) {
+
+      if( (*truth_itr)->barcode() < 200000 && (*truth_itr)->status() == 1 )
+      {
+          if( (*truth_itr)->pdgId() == 12 || (*truth_itr)->pdgId() == 14 || (*truth_itr)->pdgId() == 16)
+          {
+              missingFourVector += (*truth_itr)->p4();
+          }
+	    }
+
+  }
+
+  m_MET = missingFourVector.Pt();
+
+  if ( h_plotTruthMET )
+  {
+      m_myHistograms["Truth MET"]->Fill(m_MET);
+  }
+
+  return true;
+
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------
+//         Individual analyses
+// ---------------------------------------------------------------------------------------------------------------
+
+
+
+
+bool HgammaTruthAnalysis :: PlotPdgIds ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator truth_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator truth_end(TA::m_truthParticles->end());
+
+  numParticlesAll += TA::m_truthParticles->size();
+
+  for( ; truth_itr != truth_end; ++truth_itr) {
+      m_myHistograms["PdgId of all particles"]->Fill((*truth_itr)->pdgId(),m_eventWeight);
+      bool passStatus(false), passBarcode(false);
+      if ( (*truth_itr)->status() == 1 ) passStatus = true;
+      if ( (*truth_itr)->barcode() < 200000 ) passBarcode = true;
+      if( passStatus && passBarcode )
+      {
+          m_myHistograms["PdgId of final state particles"]->Fill((*truth_itr)->pdgId(),m_eventWeight);
+          numParticlesFS++;
+      }
+      else
+      {
+          if ( passStatus )
+          {
+              m_myHistograms["PdgId of status particles"]->Fill((*truth_itr)->pdgId(),m_eventWeight);
+              numParticlesStatus++;
+          }
+          if ( passBarcode )
+          {
+              m_myHistograms["PdgId of barcode particles"]->Fill((*truth_itr)->pdgId(),m_eventWeight);
+              numParticlesBarcode++;
+          }
+          m_myHistograms["PdgId of non final state particles"]->Fill((*truth_itr)->pdgId(),m_eventWeight);
+      }
+  }
+
+  return true;
+
+}
+
+
+
+
+bool HgammaTruthAnalysis :: StudyConvertedPhotons ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator tr_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator tr_end(TA::m_truthParticles->end());
+
+  int numFSPhotons(0), numFSElectrons(0), numFSMuons(0), numFSTaus(0);
+  TLorentzVector p4_photons, p4_electrons, p4_muons, p4_taus;
+
+  for( ; tr_itr != tr_end; ++tr_itr)
+  {
+      if ( (*tr_itr)->barcode() >= 200000  || (*tr_itr)->status() != 1)
+      {
+          continue;
+      }
+      if ( (*tr_itr)->pdgId() == 22 )
+      {
+          numFSPhotons++;
+          p4_photons += (*tr_itr)->p4();
+      }
+      if ( abs((*tr_itr)->pdgId()) == 11 )
+      {
+          numFSElectrons++;
+          p4_electrons += (*tr_itr)->p4();
+      }
+      if ( abs((*tr_itr)->pdgId()) == 13 )
+      {
+          numFSMuons++;
+          p4_muons += (*tr_itr)->p4();
+      }
+      if ( abs((*tr_itr)->pdgId()) == 15 )
+      {
+          numFSTaus++;
+          p4_taus += (*tr_itr)->p4();
+      }
+  }
+
+  if ( numFSElectrons > 0 ) std::cout << "There are " << numFSElectrons << " electrons with a combined mass of " << p4_electrons.M() << std::endl;
+  if ( numFSMuons > 0 ) std::cout << "There are " << numFSMuons << " muons with a combined mass of " << p4_muons.M() << std::endl;
+  if ( numFSTaus > 0 ) std::cout << "There are " << numFSTaus << " taus with a combined mass of " << p4_taus.M() << std::endl;
+
+  return true;
+
+}
+
+
+
+
+bool HgammaTruthAnalysis :: StudyEventTruthIso ()
+{
+
+  // This does not work yet!
+
+  xAOD::TruthParticleContainer::iterator ph_itr(TA::m_truthPhotons->begin());
+  xAOD::TruthParticleContainer::iterator ph_end(TA::m_truthPhotons->end());
+
+  for( ; ph_itr != ph_end; ++ph_itr)
+  {
+      // std::cout << (*ph_itr)->auxdata<float>("OutOfBoxIso") << std::endl;
+      m_myHistograms["OutOfBoxIso"]->Fill( (*ph_itr)->auxdata<float>("Et4_OutOfBoxIso")*0.001 , m_eventWeight );
+      m_myHistograms["NoMuNoNuIso"]->Fill( (*ph_itr)->auxdata<float>("Et4_NoMuNoNuNoGeantIso")*0.001 , m_eventWeight );
+      std::cout << "Et4_OutOfBoxIso is " << ( (*ph_itr)->isAvailable<float>("Et4_OutOfBoxIso") ? "avaliable" : "not available") << std::endl;
+      std::cout << "Et4_OutOfBoxIso : " << (*ph_itr)->auxdata<float>("Et4_OutOfBoxIso") << " MeV" << std::endl;
+      std::cout << "Et4_NoMuNoNuNoGeantIso is "<<( (*ph_itr)->isAvailable<float>("Et4_NoMuNoNuNoGeantIso") ? "avaliable" : "not available")<<std::endl;
+      std::cout << "Et4_NoMuNoNuNoGeantIso : " << (*ph_itr)->auxdata<float>("Et4_NoMuNoNuNoGeantIso") << " MeV" << std::endl;
+  }
+
+  return true;
+
+}
+
+bool HgammaTruthAnalysis :: StudyDalitzDecays ()
+{
+
+  //std::cout << "Function called " << numDalitz << std::endl;
+  //Hgamma::addOne addDalitz(numDalitz);
+  //callBCP ( &addDalitz );
+ // forEachParticleInContainerCutAndDo( TA::m_truthParticles , Hgamma::isDalitzHiggs , &addDalitz );
+  //std::cout << "Function done " << numDalitz << std::endl;
+
+  //Hgamma::forEachParticleInContainerCutAndDo( TA::m_truthParticles , &Hgamma::addOneCountTo<xAOD::TruthParticle>(numDalitz) );
+
+
+  if( isDalitz() )
+  {
+      numDalitz++;
+  }
+  else if( isHiggs() )
+  {
+      numNonDalitzHiggs++;
+  }
+
+
+  return true;
+
+}
+
+
+
+// ---------------------------------------------------------------------------------------------------------------
+//         Checks
+// ---------------------------------------------------------------------------------------------------------------
+
+
+bool HgammaTruthAnalysis :: FourVectorCheck ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator truth_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator truth_end(TA::m_truthParticles->end());
+
+  TLorentzVector sumFSFourVectors;
+  TLorentzVector sumAllFourVectors;
+
+  for( ; truth_itr != truth_end; ++truth_itr) {
+      sumAllFourVectors += (*truth_itr)->p4();
+      if( (*truth_itr)->status() == 1 && (*truth_itr)->barcode() < 200000 ) 
+      {
+          sumFSFourVectors += (*truth_itr)->p4();
+      }
+  }
+
+  m_myHistograms["Com energy from final state particles"]->Fill(sumFSFourVectors.E()*0.001*0.001,m_eventWeight);
+  m_myHistograms["Com energy from all particles"]->Fill(sumAllFourVectors.E()*0.001*0.001,m_eventWeight);
+  m_myHistograms["Com momentum from final state particles"]->Fill(sumFSFourVectors.P()*0.001*0.001,m_eventWeight);
+  m_myHistograms["Com momentum from all particles"]->Fill(sumAllFourVectors.P()*0.001*0.001,m_eventWeight);
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: isDalitz ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator truth_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator truth_end(TA::m_truthParticles->end());
+
+  for( ; truth_itr != truth_end; ++truth_itr)
+  {
+      if( (*truth_itr)->pdgId() == 25 && (*truth_itr)->status() == 62 )
+      {
+          if( (*truth_itr)->nChildren() < 2 )
+          {
+              std::cout << "Warning: Higgs has " << (*truth_itr)->nChildren() << " children" << std::endl;
+          }
+          for( unsigned int i=0 ; i < (*truth_itr)->nChildren() ; i++ )
+          {
+              if ( (*truth_itr)->child(i)->status() != 1 ) return true;
+          }
+      }
+  }
+
+  return false;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: isHiggs ()
+{
+
+  xAOD::TruthParticleContainer::const_iterator truth_itr(TA::m_truthParticles->begin());
+  xAOD::TruthParticleContainer::const_iterator truth_end(TA::m_truthParticles->end());
+
+  for( ; truth_itr != truth_end; ++truth_itr)
+  {
+      if( (*truth_itr)->pdgId() == 25 )
+      {
+          if( (*truth_itr)->status() != 22 )
+          {
+              std::cout << "Warning: Higgs status is not 22 or 62, but " << (*truth_itr)->status() << std::endl;
+          }
+          return true;
+      }
+  }
+
+  return false;
+
+}
+
+
+
+// ---------------------------------------------------------------------------------------------------------------
+//         Overlap removal
+//           -  These are currently copy-pasted  -  want to function them out
+// ---------------------------------------------------------------------------------------------------------------
+
+
+bool HgammaTruthAnalysis :: RemoveOverlap ()
+{
+
+  RemoveElectrons();
+  RemoveMuons();
+  RemoveJets();
+
+  return true;
+
+}
+
+
+
+
+bool HgammaTruthAnalysis :: RemoveElectrons ()
+{
+
+  xAOD::TruthParticleContainer::iterator ph_itr(TA::m_truthPhotons->begin());
+  xAOD::TruthParticleContainer::iterator ph_end(TA::m_truthPhotons->end());
+  xAOD::TruthParticleContainer::iterator el_end(TA::m_truthElectrons->end());
+
+  std::vector < xAOD::TruthParticle* > myElectronsToCut;
+
+  for( ; ph_itr != ph_end; ++ph_itr)
+  {
+      xAOD::TruthParticleContainer::iterator el_itr(TA::m_truthElectrons->begin());
+      for( ; el_itr != el_end; ++el_itr)
+      {
+          if( (*ph_itr)->p4().DeltaR( (*el_itr)->p4() ) > 0.4 ) continue;
+          myElectronsToCut.push_back( *el_itr );
+      }
+
+  }
+
+  if ( myElectronsToCut.size() == 0 ) return true;
+
+  sort( myElectronsToCut.begin(), myElectronsToCut.end() );
+  myElectronsToCut.erase( unique( myElectronsToCut.begin(), myElectronsToCut.end() ), myElectronsToCut.end() );
+
+  std::cout << "Removing " << myElectronsToCut.size() << " electrons which are near to photons" << std::endl;
+
+  std::vector< xAOD::TruthParticle* >::iterator rem_itr ( myElectronsToCut.begin() );
+  std::vector< xAOD::TruthParticle* >::iterator rem_end ( myElectronsToCut.end() );
+
+  for( ; rem_itr != rem_end ; ++rem_itr )
+  {
+      TA::m_truthElectrons->erase( std::remove( TA::m_truthElectrons->begin(), TA::m_truthElectrons->end(), *rem_itr ), TA::m_truthElectrons->end() );
+  } 
+
+  return true;
+
+}
+
+
+
+
+bool HgammaTruthAnalysis :: RemoveMuons ()
+{
+
+  xAOD::TruthParticleContainer::iterator ph_itr(TA::m_truthPhotons->begin());
+  xAOD::TruthParticleContainer::iterator ph_end(TA::m_truthPhotons->end());
+  xAOD::TruthParticleContainer::iterator mu_end(TA::m_truthMuons->end());
+
+  std::vector < xAOD::TruthParticle* > myMuonsToCut;
+
+  for( ; ph_itr != ph_end; ++ph_itr)
+  {
+      xAOD::TruthParticleContainer::iterator mu_itr(TA::m_truthMuons->begin());
+      for( ; mu_itr != mu_end; ++mu_itr)
+      {
+          if( (*ph_itr)->p4().DeltaR( (*mu_itr)->p4() ) > 0.4 ) continue;
+          myMuonsToCut.push_back( *mu_itr );
+      }
+
+  }
+
+  if ( myMuonsToCut.size() == 0 ) return true;
+
+  sort( myMuonsToCut.begin(), myMuonsToCut.end() );
+  myMuonsToCut.erase( unique( myMuonsToCut.begin(), myMuonsToCut.end() ), myMuonsToCut.end() );
+
+  std::cout << "Removing " << myMuonsToCut.size() << " muons which are near to photons" << std::endl;
+
+  std::vector< xAOD::TruthParticle* >::iterator rem_itr ( myMuonsToCut.begin() );
+  std::vector< xAOD::TruthParticle* >::iterator rem_end ( myMuonsToCut.end() );
+
+  for( ; rem_itr != rem_end ; ++rem_itr )
+  {
+      TA::m_truthMuons->erase( std::remove( TA::m_truthMuons->begin(), TA::m_truthMuons->end(), *rem_itr ), TA::m_truthMuons->end() );
+  } 
+
+  return true;
+
+}
+
+
+
+
+bool HgammaTruthAnalysis :: RemoveJets ()
+{
+
+  xAOD::TruthParticleContainer::iterator ph_itr(TA::m_truthPhotons->begin());
+  xAOD::TruthParticleContainer::iterator ph_end(TA::m_truthPhotons->end());
+
+  xAOD::TruthParticleContainer::iterator el_itr(TA::m_truthElectrons->begin());
+  xAOD::TruthParticleContainer::iterator el_end(TA::m_truthElectrons->end());
+
+  xAOD::JetContainer::iterator jet_end(TA::m_truthJets->end());
+
+  std::vector < xAOD::Jet* > myJetsToCut;
+
+  for( ; ph_itr != ph_end; ++ph_itr)
+  {
+      xAOD::JetContainer::iterator jet_itr(TA::m_truthJets->begin());
+      for( ; jet_itr != jet_end; ++jet_itr)
+      {
+          if( (*ph_itr)->p4().DeltaR( (*jet_itr)->p4() ) > 0.2 ) continue;
+          myJetsToCut.push_back( *jet_itr );
+      }
+
+  }
+
+  for( ; el_itr != el_end; ++el_itr)
+  {
+      xAOD::JetContainer::iterator jet_itr(TA::m_truthJets->begin());
+      for( ; jet_itr != jet_end; ++jet_itr)
+      {
+          if( (*el_itr)->p4().DeltaR( (*jet_itr)->p4() ) > 0.4 ) continue;
+          myJetsToCut.push_back( *jet_itr );
+      }
+
+  }
+
+  if ( myJetsToCut.size() == 0 ) return true;
+
+  sort( myJetsToCut.begin(), myJetsToCut.end() );
+  myJetsToCut.erase( unique( myJetsToCut.begin(), myJetsToCut.end() ), myJetsToCut.end() );
+
+  // std::cout << "Removing " << myJetsToCut.size() << " jets which are near to photons or electrons" << std::endl;
+
+  std::vector< xAOD::Jet* >::iterator rem_itr ( myJetsToCut.begin() );
+  std::vector< xAOD::Jet* >::iterator rem_end ( myJetsToCut.end() );
+
+  for( ; rem_itr != rem_end ; ++rem_itr )
+  {
+      TA::m_truthJets->erase( std::remove( TA::m_truthJets->begin(), TA::m_truthJets->end(), *rem_itr ), TA::m_truthJets->end() );
+  } 
+
+  return true;
+}
+
+
+
+
+//================================================================================
+//  Below are functions of namespace TA.
+//  This is a bit messy, but it is used to get around the problems with compiling
+//  xAOD objects in the Event Loop class. Any function which accepts an xAOD object
+//  as an argument is not declared as a member function of HgammaTruthAnalysis but is
+//  declared as a standalone function in TA instead. A bit nicer would be to have
+//  another class and make them members of this, but this still isn't great.
+//================================================================================
+
+
+
+bool TA :: GoodTruthParticle (const xAOD::TruthParticle* myParticle)
+{
+
+  if ( myParticle->nParents() > 1 )
+  {
+      std::cout << "Warning: particle of type " << myParticle->pdgId() << " has " << myParticle->nParents() << " parents of type ";
+      for( unsigned int i=0 ; i < myParticle->nParents() ; i++ )
+      {
+          std::cout << myParticle->parent(i)->pdgId() << " ";
+      }
+      std::cout << " and " << myParticle->parent(0)->nChildren() - 1 << " siblings of type ";
+      for( unsigned int i=0 ; i < myParticle->parent(0)->nChildren() ; i++ )
+      {
+          int childId ( myParticle->parent(0)->child(i)->pdgId() );
+          if( childId != 22 )
+          {
+              std::cout << childId << " ";
+          }
+      }
+      std::cout << std::endl;
+  }
+
+  // If nParents() > 1 return false ?
+
+  for( unsigned int i=0 ; i < myParticle->nParents() ; i++ )
+  {
+      int parentID = myParticle->parent(i)->pdgId();
+      if ( parentID > 110 ) return false;
+      if ( abs(parentID) == 15 ) return TA::GoodTruthParticle(myParticle->parent(i));    
+      if ( parentID == myParticle->pdgId() ) return TA::GoodTruthParticle(myParticle->parent(i));  
+  }
+
+
+  return true;
+}
+
+
+
+TLorentzVector TA :: DressLepton ( const xAOD::TruthParticle* myLepton ){
+
+  xAOD::TruthParticleContainer::const_iterator ph_itr = m_truthParticles->begin();
+  xAOD::TruthParticleContainer::const_iterator ph_end = m_truthParticles->end();
+
+  TLorentzVector sumFourVector ( myLepton->p4() );
+
+  for( ; ph_itr != ph_end; ph_itr++)
+  {
+      if ( (*ph_itr)->pdgId() == 22 && (*ph_itr)->barcode() < 200000 && (*ph_itr)->status() == 1 && (*ph_itr)->p4().DeltaR(myLepton->p4()) < 0.1 )
+      {
+          sumFourVector += (*ph_itr)->p4();
+      }
+  }
+
+  return sumFourVector;
+}
+
+
+
+double TA :: PhotonIso ( const xAOD::TruthParticle* myPhoton )
+{
+
+  // Placeholder
+
+  return 15.6;
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------
+//         Histogram functions
+// ---------------------------------------------------------------------------------------------------------------
+
+
+
+bool HgammaTruthAnalysis :: PlotKinematics ()
+{
+
+  if ( h_plotTruthPhotons )
+  {
+      TA::PrintKinematics (TA::m_truthPhotons, "Good Truth Photons", m_myHistograms, m_eventWeight);
+  }
+  if ( h_plotTruthElectrons )
+  {
+      TA::PrintKinematics (TA::m_truthElectrons, "Good Truth Electrons", m_myHistograms, m_eventWeight);
+  }
+  if ( h_plotTruthMuons )
+  {
+      TA::PrintKinematics (TA::m_truthMuons, "Good Truth Muons", m_myHistograms, m_eventWeight);
+  }
+  if ( h_plotTruthJets )
+  {
+      TA::PrintKinematics (TA::m_truthJets, "Good Truth Jets", m_myHistograms, m_eventWeight);
+  }
+  if ( h_plotTruthDiphotonSystem )
+  {
+      TA::PrintKinematics (TA::m_truthDiphotonSystemAllPS, "Diphoton System (all phase space)", m_myHistograms, m_eventWeight);
+      TA::PrintKinematics (TA::m_truthDiphotonSystem, "Diphoton System (fiducial volume)", m_myHistograms, m_eventWeight);
+      TA::PrintDiphotonKinematics (TA::m_truthDiphotonSystemAllPS, "Diphoton System (all phase space)", m_myHistograms, m_eventWeight);
+      TA::PrintDiphotonKinematics (TA::m_truthDiphotonSystem, "Diphoton System (fiducial volume)", m_myHistograms, m_eventWeight);
+  }
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeDefaultHistogram ( std::string objectName , std::string typeName , int nBins , float lower , float upper )
+{
+
+  std::stringstream name;
+  name << objectName << " " << typeName;
+  m_myHistograms[ name.str() ] = new TH1F( name.str().c_str() , name.str().c_str() , nBins , lower, upper );
+
+  return true;
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeSingleParticleKinematicHistograms ( std::string name )
+{
+
+  MakeDefaultHistogram( name , "Num", 100 , photon_num_lower , photon_num_higher );
+  MakeDefaultHistogram( name , "Pt" , 100 , photon_pt_lower , photon_pt_higher );
+  MakeDefaultHistogram( name , "Phi" , 50 , photon_phi_lower , photon_phi_higher );
+  MakeDefaultHistogram( name , "Eta" , 50 , photon_eta_lower , photon_eta_higher );
+  MakeDefaultHistogram( name , "Rapidity" , 50 , photon_rapidity_lower , photon_rapidity_higher );
+
+  return true;
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeMultipleParticleKinematicHistograms ( std::string name )
+{
+
+  MakeDefaultHistogram( name , "Delta Phi (All)" , 100 , photon_phi_lower , photon_phi_higher );
+  MakeDefaultHistogram( name , "Delta Eta (All)", 50 , photon_eta_lower , photon_eta_higher );
+  MakeDefaultHistogram( name , "Delta R (All)" , 100 , photon_R_lower , photon_R_higher );
+
+  return true;
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeKinematicHistograms ( std::string name )
+{
+
+  MakeSingleParticleKinematicHistograms( name );
+  MakeMultipleParticleKinematicHistograms( name );
+
+  return true;
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeDiphotonHistograms ( std::string name )
+{
+
+  std::string leadingPhotonName = name + " Leading";
+  std::string subleadingPhotonName = name + " Subleading";
+  std::string diPhotonName = name + " System";
+
+  MakeSingleParticleKinematicHistograms( leadingPhotonName );
+  MakeSingleParticleKinematicHistograms( subleadingPhotonName );
+  MakeSingleParticleKinematicHistograms( diPhotonName );
+
+  MakeDefaultHistogram( diPhotonName , "Mass" , 51 , 124.98 , 125.02 );
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeDressingHistograms ()
+{
+
+  if ( h_plotTruthElectrons )
+  {
+      m_myHistograms["Electron dressing energy"] = new TH1F("h_EleDressing_e", "Energy dressed to electrons", 51, -0.1, 10.1);
+      m_myHistograms["Electron undressed mass"] = new TH1F("h_EleDressing_m_before", "Mass of undressed electrons", 81, -10, 10);
+      m_myHistograms["Electron dressed mass"] = new TH1F("h_EleDressing_m_after", "Mass of dressed electrons", 81, -10, 10);
+  }
+
+  if ( h_plotTruthMuons )
+  {
+      m_myHistograms["Muon dressing energy"] = new TH1F("h_MuDressing_e", "Energy dressed to muons", 51, -0.1, 10.1);
+      m_myHistograms["Muon undressed mass"] = new TH1F("h_MuDressing_m_before", "Mass of undressed muons", 41, 100, 110);
+      m_myHistograms["Muon dressed mass"] = new TH1F("h_MuDressing_m_after", "Mass of dressed muons", 41, 100, 110);
+  }
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakeCoMEnergyHistograms ()
+{
+
+  m_myHistograms["Com energy from final state particles"] = new TH1F("h_CoM_fsParticles", "CoM energy from final state particles", 29, 6.875, 14.125);
+  m_myHistograms["Com energy from all particles"] = new TH1F("h_CoM_allParticles", "CoM energy from all particles", 140, 0, 140);
+  m_myHistograms["Com momentum from final state particles"] = new TH1F("h_CoM_p_fsParticles", "CoM momentum from final state particles",51,-1,1);
+  m_myHistograms["Com momentum from all particles"] = new TH1F("h_CoM_p_allParticles", "CoM momentum from all particles",140,0,140);
+
+  return true;
+
+}
+
+
+
+bool HgammaTruthAnalysis :: MakePdgIdHistograms ()
+{
+
+  m_myHistograms["PdgId of all particles"] = new TH1F("h_PdgId_allParticles", "PdgId from final all particles",223,-37.33,37.33);
+  m_myHistograms["PdgId of final state particles"] = new TH1F("h_PdgId_fsParticles", "PdgId from final state particles",223,-37.33,37.33);
+  m_myHistograms["PdgId of status particles"] = new TH1F("h_PdgId_statusParticles", "PdgId from status == 1 GEANT particles",223,-37.33,37.33);
+  m_myHistograms["PdgId of barcode particles"] = new TH1F("h_PdgId_barcodeParticles", "PdgId from barcode < 200000 status != 1 particles",223,-37.33,37.33);
+  m_myHistograms["PdgId of non final state particles"] = new TH1F("h_PdgId_notfsParticles", "PdgId from final state particles",223,-37.33,37.33);
+
+  return true;
+
+}
+
+
+
+bool TA :: FillHistogram ( std::map<std::string,TH1*>& m_myHistograms , std::string objectName , std::string typeName , float value , float weight )
+{
+
+  std::stringstream name;
+  name << objectName << " " << typeName;
+  m_myHistograms[ name.str() ]->Fill( value , weight );
+
+  return true;
+}
+
+
+
+template <class ConstIterator> bool TA :: PrintSingleParticleKinematics ( ConstIterator particle , std::string name ,
+                                                                          std::map < std::string, TH1* >& m_myHistograms , double m_eventWeight )
+{
+
+  TA :: FillHistogram ( m_myHistograms , name , "Pt" , (*particle)->pt() * 0.001 , m_eventWeight );
+  TA :: FillHistogram ( m_myHistograms , name , "Phi" , (*particle)->phi() , m_eventWeight );
+  TA :: FillHistogram ( m_myHistograms , name , "Eta" , (*particle)->eta() , m_eventWeight );
+  TA :: FillHistogram ( m_myHistograms , name , "Rapidity" , abs((*particle)->rapidity()) , m_eventWeight );
+  
+  return true;
+}
+
+
+
+template <class Higgs> bool TA :: PrintHiggsKinematics ( Higgs particle , std::string name ,
+                                                         std::map < std::string, TH1* >& m_myHistograms , double m_eventWeight )
+{
+
+  float rapidity = 0.5 * log( ( particle.E() + particle.Pz() ) / ( particle.E() - particle.Pz() ) );
+
+  TA :: FillHistogram ( m_myHistograms , name , "Mass" , particle.M() * 0.001 , m_eventWeight );
+  TA :: FillHistogram ( m_myHistograms , name , "Pt" , particle.Pt() * 0.001 , m_eventWeight );
+  TA :: FillHistogram ( m_myHistograms , name , "Phi" , particle.Phi() , m_eventWeight );
+  TA :: FillHistogram ( m_myHistograms , name , "Eta" , particle.Eta() , m_eventWeight );
+  TA :: FillHistogram ( m_myHistograms , name , "Rapidity" , rapidity , m_eventWeight );
+  
+  return true;
+}
+
+
+
+template <class ConstIterator> bool TA :: PrintMultipleParticleKinematics ( ConstIterator particleA , ConstIterator particleB , std::string name ,
+                                                                            std::map < std::string, TH1* >& m_myHistograms , double m_eventWeight )
+{
+
+  TA :: FillHistogram ( m_myHistograms , name , "Delta Phi (All)" , ModDeltaPhi((*particleA)->phi(),(*particleB)->phi()) , m_eventWeight );
+  TA :: FillHistogram ( m_myHistograms , name , "Delta Eta (All)" , ModDeltaEta((*particleA)->eta(),(*particleB)->eta()) , m_eventWeight );
+  TA :: FillHistogram ( m_myHistograms , name , "Delta R (All)" , (*particleA)->p4().DeltaR((*particleB)->p4()) , m_eventWeight );
+  
+  return true;
+}
+
+
+
+template <class Container> bool TA :: PrintKinematics ( Container* particles , std::string name , std::map < std::string, TH1* >& m_myHistograms,
+                                                        double m_eventWeight)
+{
+
+  typename Container::const_iterator tr_itr = particles->begin();
+  typename Container::const_iterator tr_itr_2;
+  typename Container::const_iterator tr_end = particles->end();
+
+  TA :: FillHistogram ( m_myHistograms , name , "Num" , particles->size() , 1 );
+
+  for( ; tr_itr != tr_end; tr_itr++)
+  {
+      TA :: PrintSingleParticleKinematics ( tr_itr , name , m_myHistograms , m_eventWeight );
+      for( tr_itr_2 = tr_itr + 1; tr_itr_2 != tr_end; tr_itr_2++)
+      {
+          TA :: PrintMultipleParticleKinematics ( tr_itr , tr_itr_2 , name , m_myHistograms , m_eventWeight );
+      }
+  }
+
+  return true;
+}
+
+
+
+template <class Container> bool TA :: PrintDiphotonKinematics ( Container* particles , std::string name ,
+                                                                std::map < std::string, TH1* >& m_myHistograms, double m_eventWeight )
+{
+
+  if ( particles->size() == 0 ) return true;
+
+  std::string leadingPhotonName = name + " Leading";
+  std::string subleadingPhotonName = name + " Subleading";
+  std::string diPhotonName = name + " System";
+
+  typename Container::const_iterator tr_first = particles->begin();
+  typename Container::const_iterator tr_second = tr_first + 1;
+  TLorentzVector systemFourVector( (*tr_first)->p4() + (*tr_second)->p4());
+
+  TA :: PrintSingleParticleKinematics ( tr_first , leadingPhotonName , m_myHistograms , m_eventWeight );
+  TA :: PrintSingleParticleKinematics ( tr_second , subleadingPhotonName , m_myHistograms , m_eventWeight );
+  TA :: PrintHiggsKinematics ( systemFourVector , diPhotonName , m_myHistograms , m_eventWeight );
+
+  // Phi Star
+
+  return true;
+}
+
+
+//=============================================================================================
+//  To-do list:
+//      - Photon Iso calculation
+//      - Anti-Kt4 Jet definition
+//      - Particle Removals
+//      - Calculate MET
+//=============================================================================================

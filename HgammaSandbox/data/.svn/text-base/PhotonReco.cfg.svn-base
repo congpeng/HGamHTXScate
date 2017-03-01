@@ -1,0 +1,31 @@
+########"
+#
+# Configuration file for /lustre/home/client/hep/tipton/jgv7/xAODPhotonReco/IsolationPlots/PhotonReco analysis
+#
+########"
+
+
+##################################
+# Job steering setup
+
+OutputDir:        PhotonReco_DATE
+SampleName:       sample
+InputFileList:    input_data.txt
+BaseConfig:       HGamAnalysisFramework/HgammaConfig.cfg
+
+##################################
+# HgammaAnalysis setup
+
+
+##################################
+# Photon calibration, smearing and selection settings
+
+
+##################################
+# Jet calibration, smearing and selection settings
+
+
+##################################
+# What to save in the MxAOD
+
+

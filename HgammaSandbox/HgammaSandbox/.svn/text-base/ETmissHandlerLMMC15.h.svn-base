@@ -1,0 +1,51 @@
+#ifndef HgammaSandbox_ETmissHandlerLMMC15
+#define HgammaSandbox_ETmissHandlerLMMC15
+
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+
+// MET EDM
+#include "xAODMissingET/MissingET.h"
+#include "xAODMissingET/MissingETContainer.h"
+
+//#include "METUtilities/METRebuilder.h"
+#include "METUtilities/METMaker.h"
+
+namespace HG {
+
+  class ETmissHandlerLMMC15{
+     
+  public:
+    TString m_name;
+    double m_jetJvtCut;
+
+  protected:
+    xAOD::TEvent *m_event;
+    TString       m_containerName;
+    //met::METRebuilder  *metutil=0;
+    met::METMaker *m_metmaker=0;
+
+  public:
+
+    //! \brief constructor
+    ETmissHandlerLMMC15(TString name="ETmiss",double jvtCut = 0.64);
+    
+    //! \brief destructor
+    ~ETmissHandlerLMMC15();
+
+    //! \brief initialization
+    EL::StatusCode initialize(Config &config, xAOD::TEvent *event);
+
+    //
+    // Returns a xAOD::MissingET value => Default MET_RefFinal value at the container for CST
+    virtual const xAOD::MissingET rawETmiss();
+
+    // Returns a xAOD::MissingET value => Recomputed MET_RefFinal with calibrated objects for TST
+    virtual const xAOD::MissingET ETmissRebuilder(xAOD::PhotonContainer &photonContainer,
+						  xAOD::JetContainer &jetContainer,
+						  xAOD::ElectronContainer &electronContainer,
+						  xAOD::MuonContainer &muonContainer,
+						  std::string &type);
+  };
+}
+
+#endif // HgammaSandbox_ETmissHandlerLMMC15_H

@@ -1,0 +1,27 @@
+# for full documentation check:
+# https://twiki.cern.ch/twiki/bin/viewauth/Atlas/RootCore#Package_Makefile
+
+# the name of the package:
+PACKAGE          = HgammaSandbox
+
+# the list of packages we depend on:
+PACKAGE_DEP = HGamAnalysisFramework EventLoop EventLoopGrid xAODRootAccess xAODJet xAODEgamma xAODTruth xAODEventInfo GoodRunsLists JetSelectorTools JetResolution xAODMuon MuonMomentumCorrections ElectronPhotonFourMomentumCorrection PhotonEfficiencyCorrection ElectronPhotonSelectorTools xAODTau MuonEfficiencyCorrections xAODMissingET AssociationUtils PhotonVertexSelection
+
+# additional compilation flags to pass (not propagated to dependent packages):
+PACKAGE_CXXFLAGS = -g -Wno-unused-local-typedefs -Wno-cpp
+
+# whether to use pedantic compilation:
+PACKAGE_PEDANTIC = 0
+
+# whether to turn *off* optimization (set to dict to do it only for
+# dictionaries):
+PACKAGE_NOOPT    = 0
+
+# whether to build no library (needs to be set if no source files are
+# present):
+PACKAGE_NOCC     = 0
+
+# whether we build a reflex dictionary:
+PACKAGE_REFLEX   = 0
+
+include $(ROOTCOREDIR)/Makefile-common

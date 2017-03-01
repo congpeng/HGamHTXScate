@@ -1,0 +1,43 @@
+#ifndef HgammaSandbox_DiphotonVertexStudies_H
+#define HgammaSandbox_DiphotonVertexStudies_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+//#include "PhotonVertexSelection/PhotonVertexSelectionTool.h"
+
+class DiphotonVertexStudies : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+
+
+  // variables that don't get filled at submission time should be
+  // protected from being send from the submission node to the worker
+  // node (done by the //!)
+private:
+  // Tree *myTree; //!
+  // TH1 *myHist; //!
+  //CP::PhotonVertexSelectionTool * m_photonVtxSel;
+#ifndef __CINT__
+  //CP::PhotonPointingTool *pointTool; //!
+  CP::PhotonVertexSelectionTool *m_photonVtxSel; //!
+#endif // __CINT__
+
+public:
+  // this is a standard constructor
+  DiphotonVertexStudies() { }
+  DiphotonVertexStudies(const char *name);
+  virtual ~DiphotonVertexStudies();
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(DiphotonVertexStudies, 1);
+};
+
+#endif // HgammaSandbox_DiphotonVertexStudies_H

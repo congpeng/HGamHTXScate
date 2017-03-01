@@ -1,0 +1,173 @@
+/*
+  These are mainly global utility functions, although these are rarely used. The bits which get used each time are the
+  read_input_file () and read_input_values () functions. These are strictly members of HgammaTruthAnalysis, but they live here
+  because they are a remnant of some past coding and I'm not particularly proud of them (far too many indents). However,
+  they do the job. So if you want to allow new variables to be read from the input files, then these are the functions to
+  edit. This is pretty straightforward: you just declare the variable in HgammaTruthAnalysis then add an element to one of the
+  vectors below (bool, int or double) deciding what label they will have in the files.
+
+  - Ste
+*/
+
+#include <HgammaSandbox/HgammaTruthAnalysis.h>
+#include <HgammaSandbox/MyAlgorithms.h>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <utility>
+#include <cmath>
+
+double DeltaPhi(double phi_1, double phi_2){
+  phi_1 = phi_1 - phi_2;
+  phi_2 = 0;
+  if(phi_1 < -pi) phi_1 = phi_1 + 2*pi;
+  if(phi_1 > pi) phi_1 = 2*pi - phi_1;
+  return phi_1;
+}
+
+double ModDeltaPhi(double phi_1, double phi_2){
+  double dphi = DeltaPhi(phi_1,phi_2);
+  if(dphi < 0) dphi = -dphi;
+  return dphi;
+}
+
+double DeltaEta(double eta_1, double eta_2){
+  return eta_1 - eta_2;
+}
+
+double ModDeltaEta(double eta_1, double eta_2){
+  double DEta = DeltaEta(eta_1, eta_2);
+  if(DEta < 0) DEta = - DEta;
+  return DEta;
+}
+
+double DeltaR(double phi_1, double eta_1, double phi_2, double eta_2){
+  return sqrt(pow(ModDeltaPhi(phi_1,phi_2),2) + pow(ModDeltaEta(eta_1,eta_2),2));
+}
+
+//-------------------------------------------------------------------------//
+//  HgammaTruthAnalysis        					                           //
+//                                                                         //
+//    :: read_input_file ()    - reads config options from "input_file"    //
+//    :: read_input_values ()  - reads config values from "input_values"   //
+//-------------------------------------------------------------------------//
+
+void HgammaTruthAnalysis :: read_input_file(){
+    std::vector<std::pair<std::string,bool&> > commands;
+    commands.push_back(std::pair<std::string,bool&>("make truth objects = "        , m_makeTruthObjects        ));
+    commands.push_back(std::pair<std::string,bool&>("plot truth CoM energy = "     , h_CoM_energy              ));
+    commands.push_back(std::pair<std::string,bool&>("plot truth photons = "        , h_plotTruthPhotons        ));
+    commands.push_back(std::pair<std::string,bool&>("plot truth electrons = "      , h_plotTruthElectrons      ));
+    commands.push_back(std::pair<std::string,bool&>("plot truth muons = "          , h_plotTruthMuons          ));
+    commands.push_back(std::pair<std::string,bool&>("plot truth jets = "           , h_plotTruthJets           ));
+    commands.push_back(std::pair<std::string,bool&>("plot truth diphoton system = ", h_plotTruthDiphotonSystem ));
+    commands.push_back(std::pair<std::string,bool&>("plot truth MET = "            , h_plotTruthMET            ));
+    commands.push_back(std::pair<std::string,bool&>("plot truth PdgIds = "         , h_plotTruthPdgIds         ));
+    commands.push_back(std::pair<std::string,bool&>("study truth isolation = "     , m_studyTruthIso           ));
+    commands.push_back(std::pair<std::string,bool&>("study converted photons = "   , m_studyConvertedPhotons   ));
+    commands.push_back(std::pair<std::string,bool&>("study Dalitz decays = "       , m_studyDalitzDecays       ));
+    commands.push_back(std::pair<std::string,bool&>("reject Dalitz decays = "      , m_rejectDalitzDecays      ));
+    commands.push_back(std::pair<std::string,bool&>("use WZ jets = "               , m_useWZJets               ));
+
+    std::string input;
+    std::ifstream file("truthConfigFiles/truthSelections");
+    if(!file.good()) std::cout << "Could not find input file" << std::endl;
+    if(file.fail()) std::cout << "Could not read input file" << std::endl;
+    else{
+	   	std::cout << "----------" << std::endl << "  Reading input file" << std::endl;
+		while(!file.eof()){
+	   	    getline(file,input);
+			if(!input.empty()){
+		        for(std::vector<std::pair<std::string,bool&> >::iterator vec_itr = commands.begin(); vec_itr != commands.end(); vec_itr++){
+		            int counter(0);
+		            bool match(true);
+		            for(std::string::iterator str_itr = vec_itr->first.begin(); str_itr != vec_itr->first.end(); str_itr++){
+		                if((unsigned)counter < input.size()) if(*str_itr != input.at(counter)) match = false;
+		                counter++;
+		            }
+		            if(match){
+		                if(input.at(counter) == 't') vec_itr->second = true;
+		                else vec_itr->second = false;
+					}
+	            }
+	        }
+		}
+	    for(std::vector<std::pair<std::string,bool&> >::iterator vec_itr = commands.begin(); vec_itr != commands.end(); vec_itr++){
+			std::cout << "  -  " << vec_itr->first << vec_itr->second << std::endl;
+		}
+		std::cout << "----------" << std::endl;
+    }
+}
+
+void HgammaTruthAnalysis :: read_input_values(){
+    std::vector<std::pair<std::string,int&> > int_values;
+    std::vector<std::pair<std::string,double&> > double_values;
+    int_values.push_back(std::pair<std::string,int&>("photon_pt_lower = ", photon_pt_lower));
+    int_values.push_back(std::pair<std::string,int&>("photon_pt_higher = ", photon_pt_higher));
+    double_values.push_back(std::pair<std::string,double&>("photon_phi_lower = ", photon_phi_lower));
+    double_values.push_back(std::pair<std::string,double&>("photon_phi_higher = ", photon_phi_higher));
+    double_values.push_back(std::pair<std::string,double&>("photon_eta_lower = ", photon_eta_lower));
+    double_values.push_back(std::pair<std::string,double&>("photon_eta_higher = ", photon_eta_higher));
+    double_values.push_back(std::pair<std::string,double&>("photon_R_lower = ", photon_R_lower));
+    double_values.push_back(std::pair<std::string,double&>("photon_R_higher = ", photon_R_higher));
+    double_values.push_back(std::pair<std::string,double&>("photon_num_lower = ", photon_num_lower));
+    double_values.push_back(std::pair<std::string,double&>("photon_num_higher = ", photon_num_higher));
+    double_values.push_back(std::pair<std::string,double&>("photon_rapidity_lower = ", photon_rapidity_lower));
+    double_values.push_back(std::pair<std::string,double&>("photon_rapidity_higher = ", photon_rapidity_higher));
+
+    double_values.push_back(std::pair<std::string,double&>("minPhotonPt = ", m_minPhotonPt));
+    double_values.push_back(std::pair<std::string,double&>("maxPhotonEta = ", m_maxPhotonEta));
+    double_values.push_back(std::pair<std::string,double&>("maxPhotonIso = ", m_maxPhotonIso));
+
+    double_values.push_back(std::pair<std::string,double&>("minElectronPt = ", m_minElectronPt));
+    double_values.push_back(std::pair<std::string,double&>("maxElectronEta = ", m_maxElectronEta));
+
+    double_values.push_back(std::pair<std::string,double&>("minMuonPt = ", m_minMuonPt));
+    double_values.push_back(std::pair<std::string,double&>("maxMuonEta = ", m_maxMuonEta));
+
+    double_values.push_back(std::pair<std::string,double&>("minJetPt = ", m_minJetPt));
+    double_values.push_back(std::pair<std::string,double&>("maxJetEta = ", m_maxJetEta));
+    std::string input;
+    std::ifstream file("truthConfigFiles/truthValues");
+    if(!file.good()) std::cout << "Could not find input values" << std::endl;
+    if(file.fail()) std::cout << "Could not read input values" << std::endl;
+    else{
+	   	std::cout << "----------" << std::endl << "  Reading input values" << std::endl;
+		while(!file.eof()){
+	   	    getline(file,input);
+			if(!input.empty()){
+		        for(std::vector<std::pair<std::string,int&> >::iterator vec_itr = int_values.begin(); vec_itr != int_values.end(); vec_itr++){
+		            int counter(0);
+		            bool match(true);
+		            for(std::string::iterator str_itr = vec_itr->first.begin(); str_itr != vec_itr->first.end(); str_itr++){
+                        if((unsigned)counter < input.size()) if(*str_itr != input.at(counter)) match = false;
+		                counter++;
+		            }
+		            if(match){
+		                vec_itr->second = atoi(input.substr(counter,input.size()-1).c_str());
+					}
+	            }
+		        for(std::vector<std::pair<std::string,double&> >::iterator vec_itr = double_values.begin(); vec_itr != double_values.end(); vec_itr++){
+		            int counter(0);
+		            bool match(true);
+		            for(std::string::iterator str_itr = vec_itr->first.begin(); str_itr != vec_itr->first.end(); str_itr++){
+                        if((unsigned)counter < input.size()) if(*str_itr != input.at(counter)) match = false;
+		                counter++;
+		            }
+		            if(match){
+		                vec_itr->second = atof(input.substr(counter,input.size()-1).c_str());
+					}
+	            }
+	        }
+		}
+	    for(std::vector<std::pair<std::string,int&> >::iterator vec_itr = int_values.begin(); vec_itr != int_values.end(); vec_itr++){
+			std::cout << "  -  " << vec_itr->first << vec_itr->second << std::endl;
+		}
+	    for(std::vector<std::pair<std::string,double&> >::iterator vec_itr = double_values.begin(); vec_itr != double_values.end(); vec_itr++){
+			std::cout << "  -  " << vec_itr->first << vec_itr->second << std::endl;
+		}
+		std::cout << "----------" << std::endl;
+    }
+}
+

@@ -1,0 +1,92 @@
+#ifndef HgammaSandbox_ETmissHandlerVsJVT_H
+#define HgammaSandbox_ETmissHandlerVsJVT_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+#include "HgammaSandbox/ETmissHandlerLMMC15.h"
+#include "METUtilities/METMaker.h"
+
+
+#include "JetMomentTools/JetVertexTaggerTool.h"
+#include "JetSelectorTools/JetCleaningTool.h"
+#include "InDetTrackSelectionTool/InDetTrackSelectionTool.h"
+#include "AsgTools/ToolHandle.h"
+#include "JetInterface/IJetUpdateJvt.h"
+#include "HGamAnalysisFramework/TruthUtils.h"
+
+class ETmissHandlerVsJVT : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+  HG::ETmissHandlerLMMC15 *m_ETmissHandler;//!
+
+  inline virtual HG::ETmissHandlerLMMC15*  eTmissHandlerLMMC15()    { return m_ETmissHandler; }
+
+  double MET_Truth_x=0.;
+  double MET_Truth_y=0.;
+  double MET_Truth_Total=0.;
+
+  int m_Counter=0.;
+  int m_NumberOfEvents=0.;
+
+  int n_bins_ETmiss_xy=200;
+  int n_bins_ETmiss_Total=100;
+
+  double n_min_ETmiss_xy=-100.;
+  double n_max_ETmiss_xy=100.;
+
+  double n_min_ETmiss_Total=0.;
+  double n_max_ETmiss_Total=1000.;
+
+
+
+  // variables that don't get filled at submission time should be
+  // protected from being send from the submission node to the worker
+  // node (done by the //!)
+private:
+  // Tree *myTree; //!
+  // TH1 *myHist; //!
+
+  bool m_isMC;
+  bool m_isGluonFusion;
+  bool m_isTopFusion;
+  bool m_isVBF;
+  bool m_isZH;
+  bool m_isWH;
+
+  TString m_sampleName;
+
+  TFile *JVT_LH_file;//!
+  TH2F *likelihood;//!
+  InDet::InDetTrackSelectionTool* m_selectTool; //!
+  met::METMaker * m_metmaker = 0 ; 
+  JetVertexTaggerTool* m_jet_JVT_Tool = 0; //!
+  ToolHandle<IJetUpdateJvt> hjvtagup; //!
+  JetCleaningTool* m_jetCleaningTool ; //!
+
+
+public:
+  // this is a standard constructor
+  ETmissHandlerVsJVT() { }
+  ETmissHandlerVsJVT(const char *name);
+  virtual ~ETmissHandlerVsJVT();
+
+  // these are the functions inherited from HgammaAnalysis
+ 
+  virtual EL::StatusCode initialize();
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+  virtual EL::StatusCode finalize();
+
+  bool passJVT(xAOD::Jet* jet, const xAOD::Vertex* truthVertex, const xAOD::TrackParticleContainer* trkCont, double RejectionCut ,bool is_JVT);
+  bool getJVTContainer( xAOD::JetContainer& treatedJets, const xAOD::Vertex* truthVertex, double RejectionCut,bool is_JVT);
+  void updateContainerJVT(xAOD::JetContainer& jets, double JVTcut);
+
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(ETmissHandlerVsJVT, 1);
+};
+
+#endif // HgammaSandbox_ETmissHandlerVsJVT_H

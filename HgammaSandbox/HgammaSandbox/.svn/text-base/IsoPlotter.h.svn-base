@@ -1,0 +1,42 @@
+#ifndef IsolationPlots_IsoPlotter_H
+#define IsolationPlots_IsoPlotter_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+class IsoPlotter : public HgammaAnalysis
+{
+  // put your configuration variables here as public variables.
+  // that way they can be set directly from CINT and python.
+public:
+  // float cutValue;
+
+  float m_evt_avgmu, m_evt_nPV;
+
+
+  // variables that don't get filled at submission time should be
+  // protected from being send from the submission node to the worker
+  // node (done by the //!)
+private:
+  // Tree *myTree; //!
+  // TH1 *myHist; //!
+  void FillIsoPlots( const xAOD::Photon *r_gam, bool isTruePhoton, TString type );
+  bool isCentral( const xAOD::Photon *r_gam );
+  bool isCrack( const xAOD::Photon *r_gam );
+  bool isFwd( const xAOD::Photon *r_gam );
+
+public:
+  // this is a standard constructor
+  IsoPlotter() { }
+  IsoPlotter(const char *name);
+  virtual ~IsoPlotter();
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(IsoPlotter, 1);
+};
+
+#endif // IsolationPlots_IsoPlotter_H

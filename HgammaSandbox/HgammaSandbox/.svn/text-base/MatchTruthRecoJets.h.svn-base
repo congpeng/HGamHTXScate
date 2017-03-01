@@ -1,0 +1,30 @@
+#ifndef HgammaSandbox_MatchTruthRecoJets_H
+#define HgammaSandbox_MatchTruthRecoJets_H
+
+#include "HGamAnalysisFramework/HgammaAnalysis.h"
+
+class MatchTruthRecoJets : public HgammaAnalysis
+{
+private:
+  class impl;
+  impl *p; //!
+
+public:
+  bool save_tree;
+  bool save_hists;
+
+  // this is a standard constructor
+  MatchTruthRecoJets() { }
+  MatchTruthRecoJets(const char* name);
+  virtual ~MatchTruthRecoJets();
+
+  // these are the functions inherited from HgammaAnalysis
+  virtual EL::StatusCode createOutput();
+  virtual EL::StatusCode execute();
+  virtual EL::StatusCode initialize();
+
+  // this is needed to distribute the algorithm to the workers
+  ClassDef(MatchTruthRecoJets, 1);
+};
+
+#endif // HgammaSandbox_MatchTruthRecoJets_H

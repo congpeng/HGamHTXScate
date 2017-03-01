@@ -1,0 +1,503 @@
+/***********************************
+ * Photon Reconstruction Studies
+ * ksekhon@umich.edu
+ * jared.vasquez@yale.edu 
+ * March 2015
+************************************/
+
+#include "HgammaSandbox/PhotonReco.h"
+#include "HGamAnalysisFramework/HgammaIncludes.h"
+#include "HGamAnalysisFramework/TruthUtils.h"
+#include "xAODEgamma/EgammaxAODHelpers.h"
+#include "xAODEgamma/PhotonxAODHelpers.h"
+
+using namespace std; 
+
+// this is needed to distribute the algorithm to the workers
+ClassImp(PhotonReco)
+
+
+
+PhotonReco::PhotonReco(const char *name)
+: HgammaAnalysis(name)
+{
+  // Here you put any code for the base initialization of variables,
+  // e.g. initialize all pointers to 0.  Note that you should only put
+  // the most basic initialization here, since this method will be
+  // called on both the submission and the worker node.  Most of your
+  // initialization code will go into histInitialize() and
+  // initialize().
+}
+
+
+PhotonReco::~PhotonReco()
+{
+  // Here you delete any memory you allocated during your analysis.
+}
+
+
+EL::StatusCode PhotonReco::createOutput()
+{
+  // Here you setup the histograms needed for you analysis. This method
+  // gets called after the Handlers are initialized, so that the systematic
+  // registry is already filled.
+  TString xlbl(";#it{p}_{T#gamma} [GeV]");
+  TString ylbl(";#it{#eta}");
+
+  histoStore()->createTH1F("h_Nph_true", 4, -0.5, 3.5, "# of true photons");
+
+  for ( TString etaReg : {"","_ctrl","_fwd", "_eta1", "_eta2", "_eta3", "_eta4"} ) 
+  {
+
+    for (TString phType : {"reco", "truth"} )
+    {
+      histoStore()->createTH1F(phType+"_ph_pt"+etaReg,60,0,300,xlbl);
+      histoStore()->createTH1F(phType+"_ph1_pt"+etaReg,60,0,300,xlbl);
+      histoStore()->createTH1F(phType+"_ph2_pt"+etaReg,60,0,300,xlbl);
+
+      histoStore()->createTH1F(phType+"_ph_eta"+etaReg ,80,-4,4,ylbl);
+      histoStore()->createTH1F(phType+"_ph1_eta"+etaReg,80,-4,4,ylbl);
+      histoStore()->createTH1F(phType+"_ph2_eta"+etaReg,80,-4,4,ylbl);
+    }
+  
+    TString tag;
+    for (TString recoType: {"_any", "_loose", "_tight", "_sel"}) {
+      for (TString convType: {"", "_conv", "_uncv"}) {
+        for (TString phType : {"", "_lead", "_subl"}) {
+          tag = recoType + etaReg + convType + phType;
+          
+          histoStore()->createTH1F(  "h_reco_pt"+tag, 60, 0, 300, ";#it{p}^{reco #gamma}_{T} [GeV]");
+          histoStore()->createTH1F( "h_reco_eta"+tag, 40, -4, 4, ";#it{#eta}^{reco #gamma}");
+          
+          histoStore()->createTH1F( "h_true_pt" +tag, 60, 0, 300, ";#it{p}^{true #gamma}_{T} [GeV]");
+          histoStore()->createTH1F( "h_true_eta"+tag, 40, -4,  4, ";#it{#eta}^{true #gamma}");
+
+          
+          histoStore()->createTH2F( "h2_reco_pt_true_pt"+tag,   60,  0, 300, 60,  0, 300, 
+              ";#it{p}^{reco #gamma}_{T} [GeV]; #it{p}^{true #gamma}_{T} [GeV]"); 
+          histoStore()->createTH2F( "h2_reco_eta_true_eta"+tag, 40, -4,   4, 40, -4, 300, 
+              ";#it{#eta}^{reco #gamma} [GeV]; #it{#eta}^{true #gamma}");
+         
+          histoStore()->createTProfile("h_eff_pt"+tag,100,0,1000,"; #it{p}_{T}; P( photon cluster | true photon )"); 
+          histoStore()->createTProfile("h_eff_eta"+tag,40,-4,4,"; #it{#eta}; P( photon cluster | true photon )");
+          
+          //look at pt and jet bins
+          for (TString ibin: {"", "_bin0", "_bin1", "_bin2", "_bin3", "_bin4"} ) {
+            for (TString jbin: {"", "_0jets", "_1jets","_2jets"} ) {
+              //if ( (convType+phType) != "" ) break; 
+              // resolution as a function of eta
+              histoStore()->createTProfile("h_eta_reso_pt"+tag+ibin+jbin, 10,  0, 2.5,
+                    "; |#eta_{#gamma, true}|; #it{p}^{#gamma, reco}_{T} - #it{p}^{#gamma, true}_{T}");
+              histoStore()->createTProfile("h_eta_reso_eta"+tag+ibin+jbin, 10, 0, 2.5,
+                    "; |#eta_{#gamma, true}|; #it{#eta}^{#gamma, reco} - #it{#eta}^{#gamma, true}");
+              histoStore()->createTProfile("h_eta_reso_phi"+tag+ibin+jbin, 10, 0, 2.5,
+                    "; |#eta_{#gamma, true}|; #it{#phi}^{#gamma, reco} - #it{#phi}^{#gamma, true}");
+              histoStore()->createTProfile("h_eta_frac_pt"+tag+ibin+jbin,  10, 0, 2.5,
+                    "; |#eta_{#gamma, true}|; (#it{p}_{T#gamma, reco} - #it{p}_{T#gamma, true}) / #it{p}_{T#gamma, true} ");
+
+              // resolution as a function of njets
+              histoStore()->createTProfile("h_njet_reso_pt"+tag+ibin+jbin, 8, -0.5, 7.5,
+                    "; N^{jets}_{true}; #it{p}^{#gamma, reco}_{T} - #it{p}^{#gamma, true}_{T}");
+              histoStore()->createTProfile("h_njet_reso_eta"+tag+ibin+jbin, 8, -0.5, 7.5,
+                    "; N^{jets}_{true}; #it{#eta}^{#gamma, reco} - #it{#eta}^{#gamma, true}");
+              histoStore()->createTProfile("h_njet_reso_phi"+tag+ibin+jbin, 8, -0.5, 7.5,
+                    "; N^{jets}_{true}; #it{#phi}^{#gamma, reco} - #it{#phi}^{#gamma, true}");
+              histoStore()->createTProfile("h_njet_frac_pt"+tag+ibin+jbin, 8, -0.5, 7.5,
+                    "; N^{jets}_{true}; (#it{p}_{T#gamma, reco} - #it{p}_{T#gamma, true}) / #it{p}_{T#gamma, true} ");
+
+              // resolution plots
+              histoStore()->createTH1F("h_reso_pt"+tag+ibin+jbin,100,- 20.,20.,
+                  ";#it{p}^{#gamma, reco}_{T} - #it{p}^{#gamma, true}_{T}");
+              histoStore()->createTH1F("h_reso_eta"+tag+ibin+jbin,40,-0.1,0.1,
+                  ";#it{#eta}^{#gamma, reco} - #it{#eta}^{#gamma, true}");
+              histoStore()->createTH1F("h_reso_phi"+tag+ibin+jbin,40,-0.02,0.02,
+                  ";#it{#phi}^{#gamma, reco} - #it{#phi}^{#gamma, true}");
+              histoStore()->createTH1F("h_frac_pt"+tag+ibin+jbin,40,-0.2,0.2, 
+                  ";(#it{p}_{T#gamma, reco} - #it{p}_{T#gamma, true}) / #it{p}_{T#gamma, true} ");
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return EL::StatusCode::SUCCESS;
+}
+
+
+
+EL::StatusCode PhotonReco::execute()
+{
+  // Here you do everything that needs to be done on every single
+  // events, e.g. read input variables, apply cuts, and fill
+  // histograms and trees.  This is where most of your actual analysis
+  // code will go.
+
+  // Important to keep this, so that internal tools / event variables
+  // are filled properly.
+  HgammaAnalysis::execute();
+
+  /********************** TRUTH PHOTONS ********************/
+  // Retrieve truth particles 
+  const xAOD::TruthParticleContainer *truthPtcls = 0;
+  if ( event()->retrieve(truthPtcls, "TruthParticles" ).isFailure() ) {
+    Error("execute()", "Failed to retrieve TruthParticle container." );
+    return EL::StatusCode::FAILURE;
+  }
+  
+  // Get true photons + fill truth kinematics + 
+  // fill good truth photons into vector for later
+  std::vector<const xAOD::TruthParticle*> truePhotons;      
+  for ( const xAOD::TruthParticle *tgam : *truthPtcls )
+  { 
+    // Select good truth photons
+    //if (ptcl->parent(0)->pdgId() != 25) continue; 
+    if ( ! HG::isGoodTruthPhoton(tgam) ) continue;  
+   
+    // identify central and fwd photons 
+    bool  isCtrl = isCentral( tgam );
+    bool  isFrwd =     isFwd( tgam );
+
+    // apply fiducial cuts 
+    if ( !isCtrl && !isFrwd ) continue;
+    if (tgam->pt()/HG::GeV < 25) continue;
+
+    // Fill histograms for all the truth photons
+    if (isCtrl || isFrwd) fillTruthKinematics( tgam, "", ""); //not interested in crack region...
+    if (isCtrl) fillTruthKinematics( tgam, "_ctrl", "");
+    if (isFrwd) fillTruthKinematics( tgam,  "_fwd", "");
+   
+    // Fill vector truePhotons with pt sorted photons to access leading and subleading photons
+    unsigned int i = 0; 
+    while( i<truePhotons.size() && tgam->pt() < truePhotons[i]->pt())
+      i++; 
+    truePhotons.insert(  truePhotons.begin() + i, tgam);
+  } 
+
+  // must continue if we have more than 1 true photon
+  if (truePhotons.size() < 2) return EL::StatusCode::SUCCESS; 
+
+  // Fill truth histograms - leading and subleading photons
+  histoStore()->fillTH1F("h_Nph_true",truePhotons.size());
+  for (int i =0; i < 2; i++)
+  { 
+    // Fill histograms
+    // Require 2 true photons
+    if ( truePhotons.size() != 2 ) continue;
+    
+    TString iObj = to_string(i+1);
+    bool  isCtrl = isCentral(truePhotons[i]);
+    bool  isFrwd =     isFwd(truePhotons[i]);
+
+    if (isCtrl || isFrwd) fillTruthKinematics( truePhotons[i], "", iObj); //not interested in crack region...
+    if (isCtrl) fillTruthKinematics( truePhotons[i], "_ctrl", iObj);
+    if (isFrwd) fillTruthKinematics( truePhotons[i],  "_fwd", iObj);
+  } 
+
+  /********************** RECO PHOTONS ********************/
+  // Get all reco photons
+  xAOD::PhotonContainer allPhotons = photonHandler()->getCorrectedContainer();
+  if (allPhotons.size()<1) return EL::StatusCode::SUCCESS; //require at least one photon.
+
+
+  /********************** TRUTH RECO MATCHING ********************/
+  // loop over truth photons   
+  for (unsigned int i = 0; i<truePhotons.size() && i < 2; i++) 
+  {
+    const xAOD::TruthParticle *truePhoton = truePhotons[i]; 
+
+    b_isLoose  = false;
+    b_isTight = false;
+    b_isSel   = false;
+    bool hasMatch = false;
+    double mindS = 999;
+    xAOD::Photon *closePhoton = 0;
+   
+    // Find reconstructed photon matching to truth
+    for ( xAOD::Photon *reco_y : allPhotons ) 
+    {
+      // dR cut
+      double dR = reco_y->p4().DeltaR( truePhoton->p4() );
+      if (dR > 0.4) continue;
+      
+      // define quantity dS
+      double dpT = ( 1- (reco_y->pt()/truePhoton->pt()) );
+      double dS = sqrt( dR*dR + dpT*dpT );
+      
+      //select closest photon based on dS
+      if ( dS > mindS ) continue;
+      hasMatch = true;
+      mindS = dS;
+      closePhoton = reco_y;
+
+      // now we have the reco photon matching the truth photon in "closePhoton"
+    }
+   
+    // again define central and fwd truth photons
+    bool isCtrl = isCentral(truePhoton);
+    bool isFrwd =     isFwd(truePhoton);
+    bool isGood = (isCtrl || isFrwd);
+    if (!isGood) continue; //Should be redundant.
+
+    //define more detailed eta regions
+    float Feta   = fabs(truePhoton->eta());  // Feta cheese ... yum yum ... 
+    bool eta1    = Feta < 0.6;
+    bool eta2    = Feta > 0.6  && Feta < 1.37;
+    bool eta3    = Feta > 1.52 && Feta < 1.81;
+    bool eta4    = Feta > 1.81 && Feta < 2.37;  
+ 
+    //*************** some jet work **************** not used yet 
+    // Collect and count truth jets
+    // Might need to do this with reco jets instead. 
+    const xAOD::JetContainer *truthJets = 0;
+    if (event()->retrieve(truthJets,"AntiKt4TruthJets").isFailure() )
+      HG::fatal("Cannot access AntiKt4TruthJets");
+    
+    HG::TruthParticleStruct truth = HG::identifyTruthParticles(truthPtcls,truthJets,25.0*HG::GeV);
+    int nTrueJets = truth.jets.size();
+    m_njets = nTrueJets;
+    //**********************************************
+
+
+    /********************** FILL PLOTS IF WE HAVE A MATCH ********************/
+    if (hasMatch) 
+    { 
+      // only need to fill these regions if hasMatch, otherwise leave all false
+      //stored variables in class to avoid having to pass them via fucntion arguments
+      b_isLoose = closePhoton->passSelection("Loose"); 
+      b_isTight = closePhoton->passSelection("Tight"); 
+      b_isSel   = photonHandler()->passPtEtaCuts(closePhoton);
+      b_isSel  &= photonHandler()->passPIDCut(closePhoton);
+      b_isSel  &= photonHandler()->passIsoCut(closePhoton);
+      //b_isSel  &= photonHandler()->passAmbCut(*closePhoton);  //turn on and off when required.
+
+      //bool isConv = isTrueConvertedPhoton( truePhoton ); 
+      bool isConv = xAOD::EgammaHelpers::isConvertedPhoton(closePhoton);
+      bool isUncv = (!isConv);
+    
+      TString iObj = to_string(i+1);
+
+      // Fill Photons in all eta regions
+      // Note: probably smart to move etaRegion selection into fillHistRegion code.
+      if (isGood)           fillHistRegions( truePhoton, closePhoton, iObj, "" );
+      if (isCtrl)           fillHistRegions( truePhoton, closePhoton, iObj, "_ctrl" );
+      if (isFrwd)           fillHistRegions( truePhoton, closePhoton, iObj, "_fwd" );
+
+      if (isGood && isConv) fillHistRegions( truePhoton, closePhoton, iObj, "_conv");
+      if (isCtrl && isConv) fillHistRegions( truePhoton, closePhoton, iObj, "_ctrl_conv");
+      if (isFrwd && isConv) fillHistRegions( truePhoton, closePhoton, iObj, "_fwd_conv");
+    
+      if (isGood && isUncv) fillHistRegions( truePhoton, closePhoton, iObj, "_uncv");
+      if (isCtrl && isUncv) fillHistRegions( truePhoton, closePhoton, iObj, "_ctrl_uncv");
+      if (isFrwd && isUncv) fillHistRegions( truePhoton, closePhoton, iObj, "_fwd_uncv");
+    }
+   
+    // fill efficiencies  
+    bool isTrueConv = isTrueConvertedPhoton( truePhoton ); 
+    bool isTrueUncv = (!isTrueConv);
+
+    if (isGood)               fillEffRegions( truePhoton, hasMatch,      "", i+1);
+    if (isCtrl)               fillEffRegions( truePhoton, hasMatch, "_ctrl", i+1); 
+    if (isFrwd)               fillEffRegions( truePhoton, hasMatch,  "_fwd", i+1);
+    
+    if (isGood && isTrueConv) fillEffRegions( truePhoton, hasMatch,      "_conv", i+1);
+    if (isCtrl && isTrueConv) fillEffRegions( truePhoton, hasMatch, "_ctrl_conv", i+1);
+    if (isFrwd && isTrueConv) fillEffRegions( truePhoton, hasMatch,  "_fwd_conv", i+1);
+    
+    if (isGood && isTrueUncv) fillEffRegions( truePhoton, hasMatch,      "_uncv", i+1);
+    if (isCtrl && isTrueUncv) fillEffRegions( truePhoton, hasMatch, "_ctrl_uncv", i+1);
+    if (isFrwd && isTrueUncv) fillEffRegions( truePhoton, hasMatch,  "_fwd_uncv", i+1);
+  
+    if (eta1 && isTrueConv) fillEffRegions( truePhoton, hasMatch, "_eta1_conv", i+1);
+    if (eta2 && isTrueConv) fillEffRegions( truePhoton, hasMatch, "_eta2_conv", i+1);
+    if (eta3 && isTrueConv) fillEffRegions( truePhoton, hasMatch, "_eta3_conv", i+1);
+    if (eta4 && isTrueConv) fillEffRegions( truePhoton, hasMatch, "_eta4_conv", i+1);
+
+    if (eta1 && isTrueUncv) fillEffRegions( truePhoton, hasMatch, "_eta1_uncv", i+1);
+    if (eta2 && isTrueUncv) fillEffRegions( truePhoton, hasMatch, "_eta2_uncv", i+1);
+    if (eta3 && isTrueUncv) fillEffRegions( truePhoton, hasMatch, "_eta3_uncv", i+1);
+    if (eta4 && isTrueUncv) fillEffRegions( truePhoton, hasMatch, "_eta4_uncv", i+1);
+
+  }
+
+  return EL::StatusCode::SUCCESS;
+}
+
+//***********************************************************************************************
+
+//----------------------------------
+//   Helper Functions
+//----------------------------------
+
+bool PhotonReco::isCentral(const xAOD::TruthParticle *t_gam) {
+  return fabs(t_gam->eta())<1.37;
+}
+bool PhotonReco::isCrack(const xAOD::TruthParticle *t_gam) {
+  return fabs(t_gam->eta())<1.52 && !isCentral(t_gam);
+}
+bool PhotonReco::isFwd(const xAOD::TruthParticle *t_gam) {
+  return fabs(t_gam->eta())<2.37&&fabs(t_gam->eta())>1.52;
+}
+
+//Is the true object a converted photon with R < maxRadius
+bool PhotonReco::isTrueConvertedPhoton(const xAOD::TruthParticle* truthPh, float maxRadius /*= 800.*/){
+  return (truthPh->pdgId() == 22 && truthPh->hasDecayVtx() && truthPh->decayVtx()->perp() < maxRadius);
+}
+
+
+//-------------------------------------------------------------------------------------------------------------
+void PhotonReco::fillHistRegions(const xAOD::TruthParticle *t_gam, xAOD::Photon *r_gam, TString iObj, TString tag = "" ) {
+//-------------------------------------------------------------------------------------------------------------
+// Add another set of functions here if you include another selection subset 
+
+  // Fill Histograms for different photon selections 
+                 fillTruthMatched( t_gam, r_gam, iObj,   "_any"+tag );
+  if   (b_isSel) fillTruthMatched( t_gam, r_gam, iObj,   "_sel"+tag );
+  if (b_isLoose) fillTruthMatched( t_gam, r_gam, iObj, "_loose"+tag );
+  if (b_isTight) fillTruthMatched( t_gam, r_gam, iObj, "_tight"+tag );
+}
+
+//-------------------------------------------------------------------------------------------------------------
+void PhotonReco::fillEffRegions(const xAOD::TruthParticle *t_gam, bool match, TString tag, int iph ) {
+//-------------------------------------------------------------------------------------------------------------
+// Add another set of functions here if you include another selection subset
+
+  // Fill efficiencies for different photon selections 
+  fillEffHistos( t_gam,     match,   "_any"+tag, iph);
+  fillEffHistos( t_gam,   b_isSel,   "_sel"+tag, iph);
+  fillEffHistos( t_gam, b_isLoose, "_loose"+tag, iph);
+  fillEffHistos( t_gam, b_isTight, "_tight"+tag, iph);
+}
+
+//-------------------------------------------------------------------------------------------------------------
+void PhotonReco::fillTruthKinematics(const xAOD::TruthParticle *t_gam, TString etaReg = "", TString iObj = "") {
+//-------------------------------------------------------------------------------------------------------------
+  histoStore() -> fillTH1F("truth_ph"+iObj+"_pt"+etaReg, t_gam->pt()/HG::GeV);
+  histoStore() -> fillTH1F("truth_ph"+iObj+"_eta"+etaReg, t_gam->eta());
+}
+
+//-------------------------------------------------------------------------------------------------------------
+void PhotonReco::fillTruthMatched(const xAOD::TruthParticle *t_gam, xAOD::Photon *r_gam,  TString iObj = "", TString tag = "") {
+//-------------------------------------------------------------------------------------------------------------
+// This Function does all the heavy plotting for any subgroup that calls it.
+  
+  double  r_pt = r_gam->pt()/HG::GeV;
+  double  t_pt = t_gam->pt()/HG::GeV;
+  double r_eta = r_gam->eta();
+  double t_eta = t_gam->eta();
+
+  if (iObj == "1") iObj = "_lead";
+  else if (iObj == "2") iObj = "_subl";
+
+  //Fill truth and reconstructed photon kinematics
+  histoStore() -> fillTH1F(  "h_reco_pt"+tag,  r_pt );
+  histoStore() -> fillTH1F( "h_reco_eta"+tag, r_eta );
+  histoStore() -> fillTH1F(  "h_true_pt"+tag,  t_pt );
+  histoStore() -> fillTH1F( "h_true_eta"+tag, t_eta );
+  
+  histoStore() -> fillTH1F(  "h_reco_pt"+tag+iObj,  r_pt );
+  histoStore() -> fillTH1F( "h_reco_eta"+tag+iObj, r_eta );
+  histoStore() -> fillTH1F(  "h_true_pt"+tag+iObj,  t_pt );
+  histoStore() -> fillTH1F( "h_true_eta"+tag+iObj, t_eta );
+  
+  histoStore() -> fillTH2F(   "h2_reco_pt_true_pt"+tag, r_pt, t_pt );
+  histoStore() -> fillTH2F( "h2_reco_eta_true_eta"+tag, r_eta, t_eta );
+  
+  histoStore() -> fillTH2F(   "h2_reco_pt_true_pt"+tag+iObj, r_pt, t_pt );
+  histoStore() -> fillTH2F( "h2_reco_eta_true_eta"+tag+iObj, r_eta, t_eta );
+
+  //Fill resolution plots
+  bool   isjetbin[4] = { true, (m_njets == 0), (m_njets == 1), (m_njets >= 2) };
+  TString jetbins[4] = {   "",       "_0jets",       "_1jets",       "_2jets" };
+
+  bool   isptbin[6] = { true,   false,   false,   false,   false,   false};
+  TString ptbins[6] = {   "", "_bin0", "_bin1", "_bin2", "_bin3", "_bin4"};
+       if (r_pt > 120) isptbin[5] = true;  // 120 GeV +
+  else if (r_pt > 100) isptbin[4] = true;  // 100 - 120 GeV
+  else if (r_pt >  80) isptbin[3] = true;  //  80 - 100 GeV
+  else if (r_pt >  50) isptbin[2] = true;  //  50 -  80 GeV
+  else                 isptbin[1] = true;  //  25 -  50 GeV
+
+  for( int ibin(0); ibin < 6; ++ibin ) {
+    if (!isptbin[ibin]) continue;
+    for( int jbin(0); jbin < 4; ++jbin ) {
+      if (!isjetbin[jbin]) continue;
+      fillResolution( t_gam, r_gam, iObj, tag, ptbins[ibin]+jetbins[jbin] );
+    }
+  }
+
+
+
+  //                    fillResolution( t_gam, r_gam, iObj, tag,     "" );
+  //     if (r_pt > 120) fillResolution( t_gam, r_gam, iObj, tag, "_bin4");    // 120 GeV +
+  //else if (r_pt > 100) fillResolution( t_gam, r_gam, iObj, tag, "_bin3");    // 100 - 120 GeV
+  //else if (r_pt >  80) fillResolution( t_gam, r_gam, iObj, tag, "_bin2");    //  80 - 100 GeV
+  //else if (r_pt >  50) fillResolution( t_gam, r_gam, iObj, tag, "_bin1");    //  50 -  80 GeV
+  //else                 fillResolution( t_gam, r_gam, iObj, tag, "_bin0");    //  25 -  50 GeV
+}
+
+
+//-------------------------------------------------------------------------------------------------------------
+void PhotonReco::fillResolution(const xAOD::TruthParticle *t_gam, xAOD::Photon *r_gam, 
+          TString iObj, TString tag = "", TString ibin = "") {
+//-------------------------------------------------------------------------------------------------------------
+// This function does all the resolution plotting for a given pT bin.  
+  double  r_pt = r_gam->pt()/HG::GeV;
+  double  t_pt = t_gam->pt()/HG::GeV;
+  double r_eta = r_gam->eta();
+  double t_eta = t_gam->eta();
+  double r_phi = r_gam->phi();
+  double t_phi = t_gam->phi();
+  
+  histoStore() -> fillTH1F( "h_reso_pt" +tag+ibin     , r_pt - t_pt );
+  histoStore() -> fillTH1F( "h_reso_eta"+tag+ibin     , r_eta - t_eta );
+  histoStore() -> fillTH1F( "h_reso_phi"+tag+ibin     , r_phi - t_phi );
+  histoStore() -> fillTH1F( "h_frac_pt" +tag+ibin     , (r_pt - t_pt) / t_pt );
+
+  histoStore() -> fillTH1F( "h_reso_pt" +tag+iObj+ibin, r_pt - t_pt );
+  histoStore() -> fillTH1F( "h_reso_eta"+tag+iObj+ibin, r_eta - t_eta );
+  histoStore() -> fillTH1F( "h_reso_phi"+tag+iObj+ibin, r_phi - t_phi );
+  histoStore() -> fillTH1F( "h_frac_pt" +tag+iObj+ibin, (r_pt - t_pt) / t_pt );
+  
+  histoStore() -> fillTProfile( "h_eta_reso_pt" +tag+ibin, fabs(t_eta), r_pt - t_pt );
+  histoStore() -> fillTProfile( "h_eta_reso_eta"+tag+ibin, fabs(t_eta), r_eta - t_eta );
+  histoStore() -> fillTProfile( "h_eta_reso_phi"+tag+ibin, fabs(t_eta), r_phi - t_phi );
+  histoStore() -> fillTProfile( "h_eta_frac_pt" +tag+ibin, fabs(t_eta), (r_pt - t_pt) / t_pt );
+
+  histoStore() -> fillTProfile( "h_eta_reso_pt" +tag+iObj+ibin, fabs(t_eta), r_pt - t_pt );
+  histoStore() -> fillTProfile( "h_eta_reso_eta"+tag+iObj+ibin, fabs(t_eta), r_eta - t_eta );
+  histoStore() -> fillTProfile( "h_eta_reso_phi"+tag+iObj+ibin, fabs(t_eta), r_phi - t_phi );
+  histoStore() -> fillTProfile( "h_eta_frac_pt" +tag+iObj+ibin, fabs(t_eta), (r_pt - t_pt) / t_pt );
+
+  histoStore() -> fillTProfile( "h_njet_reso_pt" +tag+ibin, m_njets, r_pt - t_pt );
+  histoStore() -> fillTProfile( "h_njet_reso_eta"+tag+ibin, m_njets, r_eta - t_eta );
+  histoStore() -> fillTProfile( "h_njet_reso_phi"+tag+ibin, m_njets, r_phi - t_phi );
+  histoStore() -> fillTProfile( "h_njet_frac_pt" +tag+ibin, m_njets, (r_pt - t_pt) / t_pt );
+
+  histoStore() -> fillTProfile( "h_njet_reso_pt" +tag+iObj+ibin, m_njets, r_pt - t_pt );
+  histoStore() -> fillTProfile( "h_njet_reso_eta"+tag+iObj+ibin, m_njets, r_eta - t_eta );
+  histoStore() -> fillTProfile( "h_njet_reso_phi"+tag+iObj+ibin, m_njets, r_phi - t_phi );
+  histoStore() -> fillTProfile( "h_njet_frac_pt" +tag+iObj+ibin, m_njets, (r_pt - t_pt) / t_pt );
+
+}
+
+
+//-------------------------------------------------------------------------------------------------------------
+void PhotonReco::fillEffHistos(const xAOD::TruthParticle *t_gam, bool match, TString tag, int iph) {
+//-------------------------------------------------------------------------------------------------------------
+  // save aside pT and eta and see if the photon is central
+  double pT  = t_gam->pt()/HG::GeV;
+  double eta = t_gam->eta();
+  //bool ctrl  = isCentral(t_gam), fwd=isFwd(t_gam);
+
+  TString iObj = "";
+  if (iph == 1)      iObj = "_lead";
+  else if (iph == 2) iObj = "_subl";
+  
+  histoStore()->fillTProfile(       "h_eff_pt"+tag,   pT,  match);
+  histoStore()->fillTProfile(      "h_eff_eta"+tag,  eta,  match);
+  histoStore()->fillTProfile(  "h_eff_pt"+tag+iObj,   pT,  match);
+  histoStore()->fillTProfile( "h_eff_eta"+tag+iObj,  eta,  match);
+
+}
+

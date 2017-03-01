@@ -1,0 +1,284 @@
+#include <iostream>
+#include <TString.h>
+#include <TFile.h>
+#include <TCanvas.h>
+#include <TLatex.h>
+#include <TH1F.h>
+#include <TH2F.h>
+#include <TGraphAsymmErrors.h>
+
+
+////////////////////////// Small and very helpful functions //////////////////////////
+
+void fatal(TString msg) { printf("\nFATAL\n  %s\n\n",msg.Data()); abort(); }
+
+
+
+TFile *openFile(TString fn) 
+{
+  TFile *f = TFile::Open(fn);
+  if (f==nullptr) fatal("Cannot open "+fn);
+  return f;
+}
+
+
+TH1 *getHisto(TFile *f, TString hn) 
+{
+  TH1 *h = (TH1*)f->Get(hn);
+  if (h==nullptr) fatal("Cannot access histo "+hn+" in file "+f->GetName());
+  return h;
+}
+
+TH2 *getHisto2D(TFile *f, TString hn) 
+{
+  TH2 *h = (TH2*)f->Get(hn);
+  if (h==nullptr) fatal("Cannot access histo "+hn+" in file "+f->GetName());
+  return h;
+}
+
+TH1 *drawHisto(TH1 *h, TString opt, int col=kBlue, int lw=2) 
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->Draw(opt); return h;
+}
+
+TH2 *drawHisto2D(TH2 *h, TString opt, int col=kBlue, int lw=2) 
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->Draw(opt); return h;
+}
+
+TH1 *drawHistoNorm(TH1 *h, TString opt, int col=kBlue, int lw=2) 
+{
+  h->SetLineColor(col); h->SetLineWidth(lw); h->SetStats(0);
+  h->SetMaximum( h->GetMaximum() * 1.2 );
+  h->GetYaxis()->SetTitle("Fraction of Events / Bin");
+  h->DrawNormalized(opt); return h;
+}
+
+
+TH1 *drawHisto(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2) 
+{
+  return drawHisto(getHisto(f,hn),opt,col);
+}
+
+TH2 *drawHisto2D(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2) 
+{
+  return drawHisto2D(getHisto2D(f,hn),opt,col);
+}
+
+TH1 *drawHistoNorm(TFile *f, TString hn, TString opt, int col=kBlue, int lw=2) 
+{
+  return drawHistoNorm(getHisto(f,hn),opt,col);
+}
+
+void drawText(double x, double y, TString txt, int col=kBlack) 
+{
+  static TLatex *tex = new TLatex(); tex->SetNDC();
+  tex->SetTextFont(42); tex->SetTextSize(0.036); tex->SetTextColor(col);
+  tex->DrawLatex(x,y,txt);
+}
+
+void drawTextSmall(double x, double y, TString txt, int col=kBlack) 
+{
+  static TLatex *tex = new TLatex(); tex->SetNDC();
+  tex->SetTextFont(42); tex->SetTextSize(0.028); tex->SetTextColor(col);
+  tex->DrawLatex(x,y,txt);
+}
+
+void drawSampleDetails( double IsoCut = -999, double TrkCut = -999 ) {
+  TString text = "ggF MC, p_{T#gamma} > 25 GeV, tight ID";
+  //will add methods to convert floats to string w/ desired precision.
+  if (IsoCut > 0) text += ", E^{40, topo}_{T} < 6.0 GeV";
+  if (TrkCut > 0) text += ", p^{40}_{T} < 2.6 GeV";
+  drawTextSmall(0.135, 0.915, text);
+}
+
+void drawConvLabels(TString etaReg) {
+  drawText(0.68,0.9,"#bf{#it{ATLAS}} Work In Progress");
+  if (etaReg.Contains("ctl")) drawText(0.68,0.85,"Photon |#eta| < 1.37");
+  else if (etaReg.Contains("fwd"))  drawText(0.68,0.85,"Photon 1.52 < |#eta| < 2.37");
+  else drawText(0.68,0.85,"No photon #eta requirment");
+  drawText(0.68,0.80,"Unconverted Photons",kBlue);
+  drawText(0.68,0.75,"Converted Photons",kRed);
+}
+
+void drawEtaLabels(TString type) {
+  drawText(0.68,0.9,"#bf{#it{ATLAS}} Work In Progress");
+  if (type.Contains("conv"))       drawText(0.68,0.85,"Converted Photons");
+  else if (type.Contains("uncv"))  drawText(0.68,0.85,"Unconverted Photons");
+  else                             drawText(0.68,0.85,"All Photons");
+  drawText(0.68,0.80,"Forward Photons",kBlue);
+  drawText(0.68,0.75,"Central Photons",kRed);
+}
+
+void drawLeadLabels(TString type) {
+  drawText(0.68,0.9,"#bf{#it{ATLAS}} Work In Progress");
+  if (type.Contains("conv"))       drawText(0.68,0.85,"Converted Photons");
+  else if (type.Contains("uncv"))  drawText(0.68,0.85,"Unconverted Photons");
+  else if (type.Contains("ctl"))  drawText(0.68,0.85,"Photon |#eta| < 1.37");
+  else if (type.Contains("fwd"))  drawText(0.68,0.85,"Photon 1.52 < |#eta| < 2.37");
+  else                             drawText(0.68,0.85,"All Photons");
+  drawText(0.68,0.80,"Sub-Leading Photon",kBlue);
+  drawText(0.68,0.75,"Leading Photon",kRed);
+}
+
+void drawRegionLabels(TString type) {
+  drawText(0.68,0.9,"#bf{#it{ATLAS}} Work In Progress");
+  double ypos = 0.85;
+  if (type.Contains("conv")) {
+    drawText(0.68,ypos,"Converted Photons");
+    ypos -= 0.05;
+  } else if (type.Contains("uncv")) {
+    drawText(0.68,ypos,"Unconverted Photons");
+    ypos -= 0.05;
+  }
+  
+  if (type.Contains("ctl"))  drawText(0.68,ypos,"Photon |#eta| < 1.37");
+  else if (type.Contains("fwd"))  drawText(0.68,ypos,"Photon 1.52 < |#eta| < 2.37");
+  else if (ypos > 0.80) drawText(0.68,ypos,"All Photons");
+}
+
+TH1 *drawEffHisto(TFile *f,  TString hn, TString etaReg, TString opt, int col=kBlue, int lw=2)
+{
+  TH1 *h_eff = getHisto(f, hn+"_iso"+etaReg);
+  //TH1 *h_all = getHisto(f, hn+"_all"+etaReg);
+  //h_eff->Divide( h_all );
+  //h_eff->SetMinimum( 0.0 );  h_eff->SetMaximum( 2.5 );
+  h_eff->GetYaxis()->SetTitle("Isolation Signal Efficiency");
+  drawHisto( h_eff, opt, col);
+  //drawText(0.68,0.9,"#bf{#it{ATLAS}} Work In Progress"); 
+  //if (etaReg.Contains("ctl")) drawText(0.68,0.85,"Photon |#eta| < 1.37");
+  //else if (etaReg.Contains("fwd"))  drawText(0.68,0.85,"Photon 1.52 < |#eta| < 2.37");
+  //else drawText(0.68,0.85,"No photon #eta requirment");
+  return h_eff;
+}
+
+TH1 *drawEffHisto2D(TFile *f,  TString hn, TString isoType, TString etaReg, TString opt, int col=kBlue, int lw=2)
+{
+  TH2 *h_eff = getHisto2D(f, hn+"_"+isoType+etaReg);
+  TH2 *h_all = getHisto2D(f, hn+"_all"+etaReg);
+  h_eff->Divide( h_all );
+  //h_eff->SetMinimum( 0.0 );  h_eff->SetMaximum( 2.5 );
+  h_eff->GetZaxis()->SetTitle("Isolation Signal Efficiency");
+  drawHisto2D( h_eff, "colz");
+  //drawText(0.68,0.9,"#bf{#it{ATLAS}} Work In Progress"); 
+  //if (etaReg.Contains("ctl")) drawText(0.68,0.85,"Photon |#eta| < 1.37");
+  //else if (etaReg.Contains("fwd"))  drawText(0.68,0.85,"Photon 1.52 < |#eta| < 2.37");
+  //else drawText(0.68,0.85,"No photon #eta requirment");
+  return h_eff;
+}
+
+
+
+///////////////////////// The main plotting function ////////////////////////////////
+int main(int argc, char **argv) 
+{
+  // input file name
+  //TString inFN("Run/runRecoEff_2015.2.23_12.18.57/hist-sample.root"), pdf("plots.pdf");
+  TString inFN, pdf; 
+  for (int i=1;i<argc;++i) 
+  {
+    TString arg(argv[i]);
+    if (arg=="--inputFile") inFN=argv[++i];
+    if (arg=="--pdfFile") pdf=argv[++i];
+    if (arg=="-in") inFN=argv[++i];
+    if (arg=="-pdf") pdf=argv[++i];
+  }
+
+  printf("\n  Running plotIsolation \n");
+  printf("  input file: %s\n",inFN.Data());
+  TFile *f = openFile(inFN);
+
+  // Create output pdf
+  // Set style
+  TCanvas *can = new TCanvas(); //"can","can",600,400);
+  can->SetTopMargin(0.04); can->SetRightMargin(0.04);
+  can->Print(pdf+"[");
+
+  drawHistoNorm(f,"h_nPhotons","",kBlue);
+  drawSampleDetails();
+  drawRegionLabels( "" ); can->Print(pdf);
+  
+  drawHistoNorm(f,"h_nPV","",kBlue);
+  drawSampleDetails();
+  drawRegionLabels( "" ); can->Print(pdf);
+
+  drawHistoNorm(f,"h_avgmu","",kBlue);
+  drawSampleDetails();
+  drawRegionLabels( "" ); can->Print(pdf);
+  
+  // Single reco photon plots
+  for ( TString etaReg: {"","_ctl","_fwd","_conv","_conv_ctl","_conv_fwd","_uncv","_uncv_ctl","_uncv_fwd"} ) {
+    drawHistoNorm(f,"h_ptcone20"+etaReg,"",kBlue);
+    drawRegionLabels( etaReg ); can->Print(pdf);
+    drawHistoNorm(f,"h_topoetcone40"+etaReg,"",kBlue);
+    drawRegionLabels( etaReg ); can->Print(pdf);
+  }
+
+
+  //drawEffHisto2D(f, "h2_pt_eta","iso","",""); 
+  //can->Print(pdf);
+  //drawEffHisto2D(f, "h2_nPV_mu","iso","",""); 
+  //can->Print(pdf);
+  //drawEffHisto2D(f, "h2_pt_eta","rel","",""); 
+  //can->Print(pdf);
+  //drawEffHisto2D(f, "h2_nPV_mu","rel","",""); 
+  //can->Print(pdf);
+  
+  // Converted v. Unconverted plots
+  for ( TString etaReg: {"","_ctl","_fwd"} ) {
+    drawHistoNorm(f,"h_ptcone20_uncv"+etaReg,"",kBlue);
+    drawHistoNorm(f,"h_ptcone20_conv"+etaReg,"same",kRed);
+    drawSampleDetails(); drawConvLabels(etaReg); can->Print(pdf);
+    
+    drawHistoNorm(f,"h_topoetcone40_uncv"+etaReg,"",kBlue);
+    drawHistoNorm(f,"h_topoetcone40_conv"+etaReg,"same",kRed);
+    drawSampleDetails(); drawConvLabels(etaReg); can->Print(pdf);
+  }
+
+  // Central vs. Forward Plots
+  for ( TString type: {"","_uncv","_conv"} ) {
+    drawHistoNorm(f,"h_ptcone20"+type+"_fwd","",kBlue);
+    drawHistoNorm(f,"h_ptcone20"+type+"_ctl","same",kRed);
+    drawSampleDetails(); drawEtaLabels(type); can->Print(pdf);
+  
+    drawHistoNorm(f,"h_topoetcone40"+type+"_fwd","",kBlue);
+    drawHistoNorm(f,"h_topoetcone40"+type+"_ctl","same",kRed);
+    drawSampleDetails(); drawEtaLabels(type); can->Print(pdf);
+  }
+  
+  // Leading vs. Sub-Leading Plots
+  for ( TString type: {"","_uncv","_conv","_ctl","_fwd"} ) {
+    drawHistoNorm(f,"h_ptcone20"+type+"_subl","",kBlue);
+    drawHistoNorm(f,"h_ptcone20"+type+"_lead","same",kRed);
+    drawSampleDetails(); drawLeadLabels(type); can->Print(pdf);
+  
+    drawHistoNorm(f,"h_topoetcone40"+type+"_subl","",kBlue);
+    drawHistoNorm(f,"h_topoetcone40"+type+"_lead","same",kRed);
+    drawSampleDetails(); drawLeadLabels(type); can->Print(pdf);
+    
+    /*drawEffHisto(f, "h_eff_ph_pt",type+"_subl","",kBlue); 
+    drawEffHisto(f, "h_eff_ph_pt",type+"_lead","same",kRed); 
+    drawSampleDetails(6.0, 2.6); drawLeadLabels(type); can->Print(pdf);
+      
+    drawEffHisto(f, "h_eff_ph_eta",type+"_subl","",kBlue); 
+    drawEffHisto(f, "h_eff_ph_eta",type+"_lead","same",kRed); 
+    drawSampleDetails(6.0, 2.6); drawLeadLabels(type); can->Print(pdf);
+    
+    drawEffHisto(f, "h_eff_mu",type+"_subl","",kBlue); 
+    drawEffHisto(f, "h_eff_mu",type+"_lead","same",kRed); 
+    drawSampleDetails(6.0, 2.6); drawLeadLabels(type); can->Print(pdf);
+    
+    drawEffHisto(f, "h_eff_nPV",type+"_subl","",kBlue); 
+    drawEffHisto(f, "h_eff_nPV",type+"_lead","same",kRed); 
+    drawSampleDetails(6.0, 2.6); drawLeadLabels(type); can->Print(pdf);*/
+  }
+
+  can->Print(pdf+"]");
+  printf("  Produced: %s\n\n",pdf.Data());
+  f->Close();
+
+}
+
+
